@@ -242,7 +242,9 @@ student-generated, revocable token:
 | Moodle / Canvas | Student-generated API token | Planned |
 
 \* Requires `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`; the UI marks it
-unavailable until they are set.
+unavailable until they are set. See
+[`docs/GOOGLE_CLASSROOM_SETUP.md`](docs/GOOGLE_CLASSROOM_SETUP.md) for a
+step-by-step guide.
 
 ### How sources work
 
