@@ -31,12 +31,17 @@ from models.study_plan import StudyPlanResponse  # noqa: E402
 from scheduler.plan_validator import expected_priority  # noqa: E402
 from utils.cache import cache_clear  # noqa: E402
 from utils.llm_json import LLMOutputError  # noqa: E402
+from utils.tls import enable_system_trust_store  # noqa: E402
 
 from fastapi import Depends  # noqa: E402
 from sqlmodel import Session  # noqa: E402
 
 configure_logging()
 logger = get_logger(__name__)
+
+# Must run before any outbound HTTPS. Lets us verify LMS servers that serve an
+# incomplete certificate chain, without ever weakening verification.
+enable_system_trust_store()
 
 app = FastAPI(
     title="CampusSync AI API",

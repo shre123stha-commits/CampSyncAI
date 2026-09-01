@@ -200,8 +200,11 @@ class ICSSource(BaseSource):
             logger.warning("TLS failure for calendar feed: %s", redact(str(exc)))
             raise SourceError(
                 "Could not verify the security certificate of the calendar "
-                "server. This is usually a missing certificate bundle on the "
-                "machine running CampusSync, not a problem with your LMS."
+                "server. Some university servers omit an intermediate "
+                "certificate that browsers fetch automatically. Installing "
+                "'truststore' (pip install truststore) lets CampusSync use "
+                "your operating system's certificate store, which usually "
+                "resolves this. Verification is never disabled."
             ) from exc
         except requests.exceptions.RequestException as exc:
             # The exception text echoes the full URL, which carries the
