@@ -59,6 +59,33 @@ services:
       - key: LOG_LEVEL
         value: INFO
 
+      # --- Optional: Google Classroom and Microsoft Teams ---------------
+      # Leave these blank and both sources simply show as "Unavailable";
+      # the ICS calendar feed and document upload still work. Fill them in
+      # later by following docs/GOOGLE_CLASSROOM_SETUP.md and
+      # docs/MICROSOFT_TEAMS_SETUP.md.
+      #
+      # The redirect URIs MUST be your real Render API address, and must
+      # match what you registered with the provider character for
+      # character, or sign-in fails with redirect_uri_mismatch. Replace
+      # the xxxx below with your actual service URL after the first
+      # deploy, then redeploy.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false        # https://campussync-api-xxxx.onrender.com/sources/classroom/callback
+
+      - key: MS_CLIENT_ID
+        sync: false
+      - key: MS_CLIENT_SECRET
+        sync: false
+      - key: MS_REDIRECT_URI
+        sync: false        # https://campussync-api-xxxx.onrender.com/sources/teams/callback
+      - key: MS_TENANT
+        value: common      # "common" works for personal and school accounts
+
   - type: web
     name: campussync-web
     runtime: docker

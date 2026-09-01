@@ -82,6 +82,18 @@ so nobody re-signs in daily. Lower it if you would rather they did.
 
 ## Adding Google Classroom or Teams later
 
+Both are optional. Leave them unset and those two sources just show as
+"Unavailable" — the ICS calendar feed and document upload still work, which
+is enough for a working planner.
+
+A warning about Teams specifically: reading Teams **assignments** needs your
+university's Microsoft 365 administrator to approve the app for everyone.
+You cannot approve it yourself, no matter how valid your student account is.
+The app handles this by falling back to your Outlook/Teams **calendar**,
+which you *can* approve yourself and which still carries assignment due
+dates. So Teams works for you without IT involvement — just via the calendar
+rather than the assignments list.
+
 Both need their redirect URLs updated to your real address, because they
 were set up for `localhost`:
 
