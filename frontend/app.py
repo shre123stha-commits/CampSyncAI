@@ -1,9 +1,19 @@
+import sys
+from pathlib import Path
+
 import streamlit as st
 
-from frontend.components.plan_view import plan_page
-from frontend.pages.dashboard import show_dashboard
-from frontend.pages.login import show_login
-from frontend.pages.sources import show_sources
+# Streamlit runs this file as a script, so the repo root is not on sys.path
+# by default. Add it so `frontend.*` imports resolve regardless of which
+# directory the app was launched from.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from frontend.components.plan_view import plan_page  # noqa: E402
+from frontend.views.dashboard import show_dashboard  # noqa: E402
+from frontend.views.login import show_login  # noqa: E402
+from frontend.views.sources import show_sources  # noqa: E402
 
 st.set_page_config(
     page_title="CampusSync AI",
@@ -14,7 +24,7 @@ st.set_page_config(
 
 def load_css():
     try:
-        with open("frontend/styles/style.css") as f:
+        with open(_REPO_ROOT / "frontend" / "styles" / "style.css") as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
     except FileNotFoundError:
         pass
