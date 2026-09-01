@@ -64,6 +64,61 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 # --------------------------------------------------------------------------
+# Recovery codes
+# --------------------------------------------------------------------------
+#
+# This deployment has no email service, so "forgot password" cannot send a
+# link. Instead each account gets one recovery code at sign-up, displayed
+# once and never again. It is bcrypt-hashed exactly like a password, because
+# that is what it is: anyone holding it can take over the account.
+
+# Unambiguous alphabet: no O/0, I/1, so a code copied by hand still works.
+RECOVERY_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+RECOVERY_GROUPS = 4
+RECOVERY_GROUP_SIZE = 4
+
+
+def generate_recovery_code() -> str:
+    """A human-transcribable one-time code, e.g. 'K7QM-2XPD-9WRT-BH4N'."""
+    groups = [
+        "".join(
+            secrets.choice(RECOVERY_ALPHABET) for _ in range(RECOVERY_GROUP_SIZE)
+        )
+        for _ in range(RECOVERY_GROUPS)
+    ]
+    return "-".join(groups)
+
+
+def normalise_recovery_code(code: str) -> str:
+    """Accept lowercase, missing dashes and stray spaces."""
+    return "".join(ch for ch in (code or "").upper() if ch.isalnum())
+
+
+def hash_recovery_code(code: str) -> str:
+    return bcrypt.hashpw(
+        normalise_recovery_code(code).encode("utf-8"),
+        bcrypt.gensalt(rounds=BCRYPT_ROUNDS),
+    ).decode("utf-8")
+
+
+def verify_recovery_code(code: str, recovery_hash: str) -> bool:
+    """Constant-time check. False on anything malformed or already consumed."""
+    cleaned = normalise_recovery_code(code)
+
+    if not cleaned or not recovery_hash:
+        return False
+
+    try:
+        return bcrypt.checkpw(
+            cleaned.encode("utf-8"), recovery_hash.encode("utf-8")
+        )
+    except (ValueError, TypeError) as exc:
+        logger.warning("Recovery verification failed: %s", exc)
+        return False
+
+
+# --------------------------------------------------------------------------
 # Session tokens
 # --------------------------------------------------------------------------
 #

@@ -44,6 +44,14 @@ class Student(SQLModel, table=True):
     registration_no: str = Field(index=True, unique=True)
     name: str = ""
     password_hash: str
+
+    # bcrypt hash of a one-time recovery code shown once at sign-up. There is
+    # no email service in this deployment, so this is the only self-service
+    # way back into an account. Hashed for the same reason the password is:
+    # it is equivalent to a password.
+    recovery_hash: str = ""
+    recovery_used_at: datetime | None = None
+
     created_at: datetime = Field(default_factory=utcnow)
     last_login: datetime | None = None
 

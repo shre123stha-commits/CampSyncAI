@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
-
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 # Allow `uvicorn api.main:app` from the backend directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import FastAPI, HTTPException  # noqa: E402
+from fastapi import (  # noqa: E402
+    Depends,  # noqa: E402
+    FastAPI,
+    HTTPException,
+)
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
+from sqlmodel import Session  # noqa: E402
 
 from agents.academic_agent import (  # noqa: E402
     StudentNotFoundError,
@@ -21,10 +25,11 @@ from agents.academic_agent import (  # noqa: E402
 )
 from api import routes_auth, routes_sources, routes_tasks  # noqa: E402
 from api.deps import current_student  # noqa: E402
+from api.rate_limit import plan_limiter  # noqa: E402
+from config import LMS_DIR, TIMETABLE_DIR, configure_logging, get_logger  # noqa: E402
 from db.models import Student  # noqa: E402
 from db.repository import completed_fingerprints, save_plan  # noqa: E402
 from db.session import get_session, init_db  # noqa: E402
-from config import LMS_DIR, TIMETABLE_DIR, configure_logging, get_logger  # noqa: E402
 from graph import graph  # noqa: E402
 from models.enums import PlanMode  # noqa: E402
 from models.study_plan import StudyPlanResponse  # noqa: E402
@@ -32,9 +37,6 @@ from scheduler.plan_validator import expected_priority  # noqa: E402
 from utils.cache import cache_clear  # noqa: E402
 from utils.llm_json import LLMOutputError  # noqa: E402
 from utils.tls import enable_system_trust_store  # noqa: E402
-
-from fastapi import Depends  # noqa: E402
-from sqlmodel import Session  # noqa: E402
 
 configure_logging()
 logger = get_logger(__name__)
@@ -234,7 +236,19 @@ def generate_my_plan(
     Tasks the student has already ticked off are excluded, so the plan
     adapts to real progress rather than re-scheduling finished work.
     """
-    from db.repository import task_fingerprint
+
+    allowed, retry_after = plan_limiter.check(str(student.id))
+
+    if not allowed:
+        minutes = max(1, round(retry_after / 60))
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"You have generated a lot of plans recently. Please try "
+                f"again in about {minutes} minute(s)."
+            ),
+            headers={"Retry-After": str(retry_after)},
+        )
 
     logger.info(
         "Generating plan for %s (mode=%s)",

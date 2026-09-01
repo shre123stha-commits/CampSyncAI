@@ -11,7 +11,7 @@ in their heads, students get one consolidated plan.
 
 ---
 
-**[Architecture](docs/ARCHITECTURE.md)** · **[Deployment](docs/DEPLOYMENT.md)** · **[Demo runbook](DEMO.md)**
+**[Put it online free](docs/HOSTING.md)** · **[Architecture](docs/ARCHITECTURE.md)** · **[Deployment](docs/DEPLOYMENT.md)** · **[Demo runbook](DEMO.md)**
 **Integrations:** [Google Classroom](docs/GOOGLE_CLASSROOM_SETUP.md) · [Microsoft Teams](docs/MICROSOFT_TEAMS_SETUP.md)
 
 ---
@@ -164,7 +164,7 @@ CampSyncAI/
 │   ├── views/                 # login · dashboard · sources (not `pages/`)
 │   ├── components/            # plan_view · cards · deadline_text
 │   └── api/                   # backend client
-├── tests/                     # 324 tests, no LLM required
+├── tests/                     # 340 tests, no LLM required
 ├── docker-compose.yml
 ├── Makefile
 └── PROJECT_PLAN.md            # full engineering plan
@@ -229,7 +229,7 @@ No stack trace is ever reachable from the UI.
 make test
 ```
 
-324 tests, ~26s, **no Ollama required** — the LLM is stubbed. Covers JSON
+340 tests, ~48s, **no Ollama required** — the LLM is stubbed. Covers JSON
 recovery from malformed model output, day-aware slot detection, deadline
 parsing across 8 formats, plan validation rules, the retry loop, and every
 API error path, plus the caching layer.
@@ -310,6 +310,8 @@ See [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for the full plan.
 - [x] **Phase 6** — Human-in-the-loop feedback, architecture docs, demo runbook
 - [x] **Phase 7** — Multi-user deployment (Postgres, hosted-model fallback,
       persistent sessions) and the Microsoft Teams source
+- [x] **Phase 8** — Small-group hosting: recovery-code password reset, rate
+      limiting, one-click free deployment
 
 ---
 

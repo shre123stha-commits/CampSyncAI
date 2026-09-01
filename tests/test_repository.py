@@ -35,7 +35,10 @@ def session():
 
 @pytest.fixture
 def student(session):
-    return create_student(session, "24BAI1127", "hunter22", "Asha")
+    student, _recovery_code = create_student(
+        session, "24BAI1127", "hunter22", "Asha"
+    )
+    return student
 
 
 def make_task(subject="Maths", work="Problem set 3", deadline="12 August 2026"):
@@ -169,7 +172,7 @@ def test_completed_at_is_set(session, student):
 
 
 def test_cannot_complete_another_students_task(session, student):
-    other = create_student(session, "24BCS1028", "password1")
+    other, _ = create_student(session, "24BCS1028", "password1")
     records = sync_tasks(session, student.id, [make_task()])
 
     assert set_task_completed(session, other.id, records[0].id, True) is None
@@ -190,7 +193,7 @@ def test_completed_fingerprints(session, student):
 
 
 def test_tasks_are_scoped_per_student(session, student):
-    other = create_student(session, "24BCS1028", "password1")
+    other, _ = create_student(session, "24BCS1028", "password1")
     sync_tasks(session, student.id, [make_task()])
 
     assert list_tasks(session, other.id) == []

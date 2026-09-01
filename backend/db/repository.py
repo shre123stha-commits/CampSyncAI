@@ -16,7 +16,13 @@ from db.models import (
     Student,
     TaskRecord,
 )
-from db.security import hash_password, verify_password
+from db.security import (
+    generate_recovery_code,
+    hash_password,
+    hash_recovery_code,
+    verify_password,
+    verify_recovery_code,
+)
 from models.task import Task
 
 logger = get_logger(__name__)
@@ -53,16 +59,24 @@ def create_student(
     registration_no: str,
     password: str,
     name: str = "",
-) -> Student:
+) -> tuple[Student, str]:
+    """Create an account. Returns (student, recovery_code).
+
+    The recovery code is returned in plaintext exactly once, here. Only its
+    hash is stored, so it cannot be recovered later - which is the point.
+    """
     if get_student(session, registration_no) is not None:
         raise DuplicateStudentError(
             f"An account for '{registration_no}' already exists."
         )
 
+    recovery_code = generate_recovery_code()
+
     student = Student(
         registration_no=registration_no,
         name=name,
         password_hash=hash_password(password),
+        recovery_hash=hash_recovery_code(recovery_code),
     )
 
     session.add(student)
@@ -71,7 +85,45 @@ def create_student(
 
     logger.info("Created account for %s", registration_no)
 
-    return student
+    return student, recovery_code
+
+
+def reset_password_with_code(
+    session: Session,
+    registration_no: str,
+    recovery_code: str,
+    new_password: str,
+) -> str | None:
+    """Reset a password using the one-time code. Returns a fresh code.
+
+    Returns None if the account or code is wrong. The caller must not reveal
+    which, so a stranger cannot use this to discover who has an account.
+
+    Consuming a code issues a new one, so an account is never left without a
+    way back in.
+    """
+    student = get_student(session, registration_no)
+
+    if student is None:
+        # Burn comparable time so a missing account is not detectable.
+        verify_recovery_code(recovery_code, "$2b$12$" + "x" * 53)
+        return None
+
+    if not verify_recovery_code(recovery_code, student.recovery_hash):
+        return None
+
+    replacement = generate_recovery_code()
+
+    student.password_hash = hash_password(new_password)
+    student.recovery_hash = hash_recovery_code(replacement)
+    student.recovery_used_at = datetime.utcnow()
+
+    session.add(student)
+    session.commit()
+
+    logger.info("Password reset via recovery code for %s", registration_no)
+
+    return replacement
 
 
 def authenticate(

@@ -6,7 +6,29 @@ import os
 
 import requests
 
-BASE_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
+def _normalise_base_url(raw: str) -> str:
+    """Accept a bare host:port as well as a full URL.
+
+    Render's `hostport` property yields "campussync-api:10000" with no
+    scheme, which requests rejects. Local values and explicit https:// URLs
+    pass through untouched.
+    """
+    cleaned = (raw or "").strip().rstrip("/")
+
+    if not cleaned:
+        return "http://127.0.0.1:8000"
+
+    if "://" in cleaned:
+        return cleaned
+
+    # Internal service names and localhost are plain HTTP; anything with a
+    # dot is a public hostname and should be HTTPS.
+    scheme = "https" if "." in cleaned.split(":")[0] else "http"
+
+    return f"{scheme}://{cleaned}"
+
+
+BASE_URL = _normalise_base_url(os.getenv("BACKEND_URL", ""))
 
 TIMEOUT = int(os.getenv("BACKEND_TIMEOUT", "180"))
 
@@ -161,6 +183,18 @@ def generate_my_plan(token: str, mode: str, feedback: str = "") -> dict:
         "/my/generate-plan",
         token=token,
         json={"mode": mode, "feedback": feedback},
+    )
+
+
+def reset_password(registration_no: str, recovery_code: str, new_password: str) -> dict:
+    return _request(
+        "POST",
+        "/auth/reset-password",
+        json={
+            "registration_no": registration_no,
+            "recovery_code": recovery_code,
+            "new_password": new_password,
+        },
     )
 
 
