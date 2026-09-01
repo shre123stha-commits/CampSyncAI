@@ -8,10 +8,16 @@ so the card described a source it gave no way to act on.
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from frontend.components import upload_form
-from frontend.views import dashboard, sources
+# These modules import streamlit, which is a frontend dependency and is not
+# installed in the backend-only environment CI uses for the test job.
+pytest.importorskip("streamlit", reason="frontend dependency not installed")
+
+from frontend.components import upload_form  # noqa: E402
+from frontend.views import dashboard, sources  # noqa: E402
 
 
 def test_both_document_kinds_are_offered():
