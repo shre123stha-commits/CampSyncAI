@@ -9,6 +9,7 @@ from frontend.api.backend_api import (
     set_task_completed,
     upload_document,
 )
+from frontend.components.deadline_text import format_days_remaining
 from frontend.components.plan_view import render_empty_state
 from frontend.components.planner_cards import planner_cards
 
@@ -110,8 +111,9 @@ def _task_row(task):
         if task.get("deadline"):
             details.append(f"📅 {task['deadline']}")
         if not done and isinstance(task.get("days_remaining"), int):
-            if task["days_remaining"] < 999:
-                details.append(f"⏳ {task['days_remaining']}d left")
+            phrase = format_days_remaining(task["days_remaining"])
+            if phrase:
+                details.append(phrase)
         if task.get("platform"):
             details.append(f"📚 {task['platform']}")
 
