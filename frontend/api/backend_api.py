@@ -15,16 +15,26 @@ class BackendError(Exception):
     """A user-presentable backend failure."""
 
 
-def _request(method: str, path: str, **kwargs):
+class AuthError(BackendError):
+    """The session is missing or has expired."""
+
+
+def _request(method: str, path: str, token: str | None = None, **kwargs):
     url = f"{BASE_URL}{path}"
 
+    headers = kwargs.pop("headers", {})
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
     try:
-        response = requests.request(method, url, timeout=TIMEOUT, **kwargs)
+        response = requests.request(
+            method, url, timeout=TIMEOUT, headers=headers, **kwargs
+        )
 
     except requests.exceptions.ConnectionError as exc:
         raise BackendError(
-            "Cannot reach the CampusSync AI backend. "
-            f"Is it running at {BASE_URL}?"
+            f"Cannot reach the CampusSync AI backend. Is it running at "
+            f"{BASE_URL}?"
         ) from exc
 
     except requests.exceptions.Timeout as exc:
@@ -42,38 +52,89 @@ def _request(method: str, path: str, **kwargs):
         if isinstance(detail, list) and detail:
             detail = detail[0].get("msg", str(detail))
 
-        raise BackendError(detail or f"Backend error {response.status_code}.")
+        message = detail or f"Backend error {response.status_code}."
+
+        if response.status_code == 401:
+            raise AuthError(message)
+
+        raise BackendError(message)
 
     return response.json()
 
 
-def generate_plan(student_id: str, mode: str) -> dict:
-    """Request a study plan. Raises BackendError on failure."""
+# --------------------------------------------------------------------------
+# Auth
+# --------------------------------------------------------------------------
+
+
+def register(registration_no: str, password: str, name: str = "") -> dict:
     return _request(
         "POST",
-        "/generate-plan",
-        json={"registration_no": student_id, "mode": mode},
+        "/auth/register",
+        json={
+            "registration_no": registration_no,
+            "password": password,
+            "name": name,
+        },
     )
 
 
-def get_tasks(student_id: str) -> dict:
-    """Fetch tasks + timetable without running the planner.
-
-    Served from the backend's extraction cache when warm, so this is fast.
-    """
-    return _request("GET", f"/students/{student_id}/tasks")
-
-
-def refresh_student(student_id: str) -> dict:
-    """Invalidate the backend's cached extraction for this student."""
-    return _request("POST", f"/students/{student_id}/refresh")
+def login(registration_no: str, password: str) -> dict:
+    return _request(
+        "POST",
+        "/auth/login",
+        json={"registration_no": registration_no, "password": password},
+    )
 
 
-def list_students() -> list[str]:
+def logout(token: str) -> None:
     try:
-        return _request("GET", "/students").get("students", [])
+        _request("POST", "/auth/logout", token=token)
     except BackendError:
-        return []
+        pass
+
+
+# --------------------------------------------------------------------------
+# Tasks
+# --------------------------------------------------------------------------
+
+
+def get_tasks(token: str, include_completed: bool = True) -> dict:
+    return _request(
+        "GET",
+        f"/tasks?include_completed={str(include_completed).lower()}",
+        token=token,
+    )
+
+
+def set_task_completed(token: str, task_id: int, completed: bool) -> dict:
+    return _request(
+        "PATCH", f"/tasks/{task_id}", token=token, json={"completed": completed}
+    )
+
+
+def refresh_data(token: str) -> dict:
+    return _request("POST", "/refresh", token=token)
+
+
+def upload_document(token: str, kind: str, filename: str, data: bytes) -> dict:
+    return _request(
+        "POST",
+        f"/upload?kind={kind}",
+        token=token,
+        files={"file": (filename, data, "application/octet-stream")},
+    )
+
+
+# --------------------------------------------------------------------------
+# Planning
+# --------------------------------------------------------------------------
+
+
+def generate_my_plan(token: str, mode: str) -> dict:
+    return _request(
+        "POST", "/my/generate-plan", token=token, json={"mode": mode}
+    )
 
 
 def backend_online() -> bool:

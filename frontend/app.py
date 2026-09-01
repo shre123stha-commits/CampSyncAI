@@ -1,8 +1,8 @@
 import streamlit as st
 
-from frontend.api.backend_api import backend_online, list_students
 from frontend.components.plan_view import plan_page
 from frontend.pages.dashboard import show_dashboard
+from frontend.pages.login import show_login
 
 st.set_page_config(
     page_title="CampusSync AI",
@@ -23,57 +23,12 @@ load_css()
 
 st.session_state.setdefault("logged_in", False)
 st.session_state.setdefault("student_id", "")
+st.session_state.setdefault("token", "")
 st.session_state.setdefault("current_page", "dashboard")
 
 
-# ====================================================
-#                   LOGIN
-# ====================================================
-
 if not st.session_state.logged_in:
-    st.markdown(
-        """
-        <div class="main-title">🎓 CampusSync AI</div>
-        <div class="subtitle">Your AI Academic Assistant</div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.write("")
-
-    if not backend_online():
-        st.warning(
-            "⚠️ Backend not reachable. Start it with `make backend` "
-            "and make sure Ollama is running."
-        )
-
-    known = list_students()
-
-    if known:
-        st.caption("Demo accounts available: " + ", ".join(known))
-
-    student_id = st.text_input(
-        "Student ID", placeholder="e.g. 24BAI1127"
-    ).strip()
-
-    if st.button("Login", use_container_width=True):
-        if not student_id:
-            st.warning("Please enter your Student ID.")
-        elif known and student_id not in known:
-            st.error(
-                f"No records found for '{student_id}'. "
-                f"Try one of: {', '.join(known)}"
-            )
-        else:
-            st.session_state.student_id = student_id
-            st.session_state.logged_in = True
-            st.session_state.current_page = "dashboard"
-            st.rerun()
-
-
-# ====================================================
-#                MAIN APPLICATION
-# ====================================================
+    show_login()
 
 else:
     page = st.session_state.current_page

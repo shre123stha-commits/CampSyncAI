@@ -12,3 +12,5 @@ class PlannerState(TypedDict, total=False):
     assignments: list[Task]
     classroom_tasks: list[Task]
     study_plan: Optional[StudyPlanResponse]
+    # Fingerprints of tasks the student has completed; excluded from planning.
+    exclude_fingerprints: set[str]

@@ -17,3 +17,6 @@ dist/
 campussync.db
 .cache/
 *.zip
+*.db
+*.sqlite3
+data/uploads/

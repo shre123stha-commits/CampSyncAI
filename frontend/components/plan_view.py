@@ -4,29 +4,28 @@ from __future__ import annotations
 
 import streamlit as st
 
-from frontend.api.backend_api import BackendError, generate_plan
+from frontend.api.backend_api import AuthError, BackendError, generate_my_plan
 
 PRIORITY_ICON = {"High": "🔴", "Medium": "🟠", "Low": "🟢"}
 
 
-def fetch_plan(student_id: str, mode: str, *, force: bool = False):
-    """Fetch a plan, caching it in the session so navigation is instant.
+def fetch_plan(mode: str, *, force: bool = False):
+    """Fetch a plan for the signed-in student, cached per mode in the session.
 
     Returns (plan, error_message). Exactly one will be None.
     """
     cache = st.session_state.setdefault("plan_cache", {})
-    key = f"{student_id}:{mode}"
 
-    if not force and key in cache:
-        return cache[key], None
+    if not force and mode in cache:
+        return cache[mode], None
 
     try:
         with st.spinner("🤖 AI is building your study plan…"):
-            plan = generate_plan(student_id, mode)
-    except BackendError as exc:
+            plan = generate_my_plan(st.session_state.token, mode)
+    except (AuthError, BackendError) as exc:
         return None, str(exc)
 
-    cache[key] = plan
+    cache[mode] = plan
     return plan, None
 
 
@@ -85,8 +84,6 @@ def plan_page(title: str, mode: str, *, show_timings: bool, show_day: bool):
     """Render a full plan page including title, refresh and back navigation."""
     st.title(title)
 
-    student_id = st.session_state.student_id
-
     col1, col2 = st.columns([1, 1])
     with col1:
         back = st.button("⬅ Back to Dashboard", use_container_width=True)
@@ -97,7 +94,7 @@ def plan_page(title: str, mode: str, *, show_timings: bool, show_day: bool):
         st.session_state.current_page = "dashboard"
         st.rerun()
 
-    plan, error = fetch_plan(student_id, mode, force=refresh)
+    plan, error = fetch_plan(mode, force=refresh)
 
     if error:
         st.error(error)

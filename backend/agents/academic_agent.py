@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from config import LMS_DIR, TIMETABLE_DIR, get_logger
+from config import LMS_DIR, TIMETABLE_DIR, UPLOAD_DIR, get_logger
 from extractors.task_extractor import extract_tasks
 from extractors.timetable_extractor import extract_timetable
 from models.task import Task
@@ -84,6 +84,22 @@ def _extract_documents(
     return lectures, tasks
 
 
+def resolve_document(kind: str, reg_no: str):
+    """Locate a student's document, preferring their own upload.
+
+    An uploaded file always wins over the bundled sample data, so a student
+    who onboards themselves sees their own timetable.
+    """
+    uploaded = UPLOAD_DIR / kind / f"{reg_no}.docx"
+
+    if uploaded.exists():
+        return uploaded
+
+    base = TIMETABLE_DIR if kind == "timetable" else LMS_DIR
+
+    return base / f"{reg_no}.docx"
+
+
 def load_academic_data(reg_no: str) -> tuple[list[Lecture], list[Task]]:
     """Return (lectures, tasks) for *reg_no*, using the disk cache when warm.
 
@@ -93,8 +109,8 @@ def load_academic_data(reg_no: str) -> tuple[list[Lecture], list[Task]]:
     `days_remaining` is deliberately recomputed *after* the cache lookup:
     it depends on today's date, so a cached value would go stale overnight.
     """
-    timetable_path = TIMETABLE_DIR / f"{reg_no}.docx"
-    lms_path = LMS_DIR / f"{reg_no}.docx"
+    timetable_path = resolve_document("timetable", reg_no)
+    lms_path = resolve_document("lms", reg_no)
 
     if not timetable_path.exists() and not lms_path.exists():
         raise StudentNotFoundError(
@@ -133,6 +149,24 @@ def academic_agent(state):
     logger.info("Academic agent: loading documents for %s", reg_no)
 
     lectures, tasks = load_academic_data(reg_no)
+
+    # Drop tasks the student has already completed, so plans reflect real
+    # progress instead of re-scheduling finished work.
+    excluded = state.get("exclude_fingerprints") or set()
+
+    if excluded:
+        from db.repository import task_fingerprint
+
+        before = len(tasks)
+        tasks = [
+            task
+            for task in tasks
+            if task_fingerprint(task.subject, task.work, task.deadline)
+            not in excluded
+        ]
+        logger.info(
+            "Excluded %d completed task(s)", before - len(tasks)
+        )
 
     state["timetable"] = lectures
     state["assignments"] = tasks

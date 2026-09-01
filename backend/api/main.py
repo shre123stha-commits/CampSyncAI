@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 import sys
 from pathlib import Path
 
@@ -17,6 +19,11 @@ from agents.academic_agent import (  # noqa: E402
     StudentNotFoundError,
     load_academic_data,
 )
+from api import routes_auth, routes_tasks  # noqa: E402
+from api.deps import current_student  # noqa: E402
+from db.models import Student  # noqa: E402
+from db.repository import completed_fingerprints, save_plan  # noqa: E402
+from db.session import get_session, init_db  # noqa: E402
 from config import LMS_DIR, TIMETABLE_DIR, configure_logging, get_logger  # noqa: E402
 from graph import graph  # noqa: E402
 from models.enums import PlanMode  # noqa: E402
@@ -24,6 +31,9 @@ from models.study_plan import StudyPlanResponse  # noqa: E402
 from scheduler.plan_validator import expected_priority  # noqa: E402
 from utils.cache import cache_clear  # noqa: E402
 from utils.llm_json import LLMOutputError  # noqa: E402
+
+from fastapi import Depends  # noqa: E402
+from sqlmodel import Session  # noqa: E402
 
 configure_logging()
 logger = get_logger(__name__)
@@ -33,6 +43,16 @@ app = FastAPI(
     version="0.2.0",
     description="AI-powered academic study planner.",
 )
+
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    init_db()
+    yield
+
+
+app.router.lifespan_context = lifespan
 
 app.add_middleware(
     CORSMiddleware,
@@ -72,6 +92,10 @@ async def _llm_error_handler(_request, exc: LLMOutputError):
             )
         },
     )
+
+
+app.include_router(routes_auth.router)
+app.include_router(routes_tasks.router)
 
 
 @app.get("/")
@@ -144,6 +168,7 @@ def refresh_student(registration_no: str):
 
 @app.post("/generate-plan", response_model=StudyPlanResponse)
 def generate_plan(request: PlanRequest) -> StudyPlanResponse:
+    """Legacy unauthenticated endpoint, kept for the sample data demo."""
     logger.info(
         "Generating plan: student=%s mode=%s",
         request.registration_no,
@@ -181,5 +206,68 @@ def generate_plan(request: PlanRequest) -> StudyPlanResponse:
         raise HTTPException(
             status_code=502, detail="The planner did not return a study plan."
         )
+
+    return plan
+
+
+class MyPlanRequest(BaseModel):
+    mode: PlanMode = PlanMode.DAY_WITHOUT_TIMINGS
+
+
+@app.post("/my/generate-plan", response_model=StudyPlanResponse)
+def generate_my_plan(
+    request: MyPlanRequest,
+    student: Student = Depends(current_student),
+    session: Session = Depends(get_session),
+) -> StudyPlanResponse:
+    """Generate a plan for the signed-in student.
+
+    Tasks the student has already ticked off are excluded, so the plan
+    adapts to real progress rather than re-scheduling finished work.
+    """
+    from db.repository import task_fingerprint
+
+    logger.info(
+        "Generating plan for %s (mode=%s)",
+        student.registration_no,
+        request.mode.value,
+    )
+
+    done = completed_fingerprints(session, student.id)
+
+    initial_state = {
+        "registration_no": student.registration_no,
+        "mode": request.mode.value,
+        "timetable": [],
+        "assignments": [],
+        "classroom_tasks": [],
+        "study_plan": None,
+        "exclude_fingerprints": done,
+    }
+
+    try:
+        result = graph.invoke(initial_state)
+
+    except StudentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    except LLMOutputError:
+        raise
+
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Unexpected error while generating plan")
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred while generating the plan.",
+        ) from exc
+
+    plan = result.get("study_plan")
+
+    if plan is None:
+        raise HTTPException(
+            status_code=502, detail="The planner did not return a study plan."
+        )
+
+    save_plan(session, student.id, request.mode.value, plan.model_dump())
 
     return plan

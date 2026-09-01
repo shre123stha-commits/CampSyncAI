@@ -88,6 +88,21 @@ model:
 
 The LLM's job is reading messy documents and composing a humane schedule.
 
+### Accounts and data
+
+Accounts are stored in SQLite with **bcrypt-hashed passwords chosen for this
+app**. We never collect a university credential — see the data-sources table
+below.
+
+Tasks are persisted with a content **fingerprint** (subject + work + deadline),
+which gives them a stable identity across re-extraction. Ticking a task off
+therefore survives a document refresh, and re-reading a document never creates
+duplicate rows. Completed tasks are excluded from new plans, so the planner
+schedules only what is genuinely left.
+
+Students can upload their own `.docx` timetable and LMS export; an upload
+takes precedence over the bundled sample data.
+
 ### Caching
 
 Document extraction costs two LLM calls and is **deterministic for a given
@@ -148,13 +163,27 @@ CampSyncAI/
 
 ## API
 
+**Authenticated** (send `Authorization: Bearer <token>`):
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /auth/register` | Create an account |
+| `POST /auth/login` | Sign in, returns a token |
+| `POST /auth/logout` | Invalidate the token |
+| `GET /auth/me` | Current account |
+| `GET /tasks` | Tasks + timetable, **no planning step** (fast) |
+| `PATCH /tasks/{id}` | Mark a task complete / incomplete |
+| `POST /upload?kind=timetable\|lms` | Upload a `.docx` |
+| `POST /refresh` | Invalidate the extraction cache |
+| `POST /my/generate-plan` | Generate a plan, skipping completed tasks |
+
+**Public:**
+
 | Endpoint | Purpose |
 |---|---|
 | `GET /health` | Liveness |
-| `GET /students` | Registration numbers with documents on file |
-| `GET /students/{reg_no}/tasks` | Tasks + timetable, **no planning step** (fast) |
-| `POST /students/{reg_no}/refresh` | Invalidate the extraction cache |
-| `POST /generate-plan` | Generate a study plan |
+| `GET /students` | Registration numbers with sample documents |
+| `POST /generate-plan` | Legacy sample-data planning |
 
 ```bash
 curl -X POST http://localhost:8000/generate-plan \
@@ -166,7 +195,10 @@ curl -X POST http://localhost:8000/generate-plan \
 
 | Condition | Status |
 |---|---|
-| Unknown student | `404` |
+| Unknown student / task | `404` |
+| Not signed in, bad or expired token | `401` |
+| Registration number already taken | `409` |
+| Upload too large | `413` |
 | Invalid mode / empty reg no | `422` |
 | Ollama unreachable | `503` |
 | No valid plan after retries | `502` |
@@ -182,7 +214,7 @@ No stack trace is ever reachable from the UI.
 make test
 ```
 
-120 tests, ~0.9s, **no Ollama required** — the LLM is stubbed. Covers JSON
+191 tests, ~20s, **no Ollama required** — the LLM is stubbed. Covers JSON
 recovery from malformed model output, day-aware slot detection, deadline
 parsing across 8 formats, plan validation rules, the retry loop, and every
 API error path, plus the caching layer.
@@ -200,7 +232,7 @@ student-generated, revocable token:
 | Source | Mechanism | Status |
 |---|---|---|
 | Documents | Local `.docx` | ✅ Working |
-| Upload | Student-supplied files | Planned |
+| Upload | Student-supplied `.docx` | ✅ Working |
 | ICS feed | Private calendar URL | Planned |
 | Google Classroom | OAuth 2.0 + MCP | Planned |
 | Moodle / Canvas | Student API token | Planned |
@@ -215,7 +247,7 @@ See [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for the full plan.
 - [x] **Phase 1** — Reliability: JSON recovery, retry loop, error contract, tests
 - [x] **Phase 2** — Day-aware scheduling + semantic validators
 - [x] **Phase 3** — Extraction caching, sub-second warm dashboard
-- [ ] **Phase 4** — SQLite persistence, bcrypt auth, upload, task completion
+- [x] **Phase 4** — SQLite persistence, bcrypt auth, upload, task completion
 - [ ] **Phase 5** — Live sources (ICS, Google Classroom OAuth)
 - [ ] **Phase 6** — Human-in-the-loop feedback, polish
 
