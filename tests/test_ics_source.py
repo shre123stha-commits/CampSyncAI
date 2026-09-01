@@ -1,5 +1,7 @@
 import pytest
+import requests
 
+from sources import ics_source
 from sources.base import SourceError
 from sources.ics_source import (
     ICSSource,
@@ -251,3 +253,79 @@ def test_connection_error_is_friendly(monkeypatch):
 
     with pytest.raises(SourceError, match="Could not reach"):
         ICSSource().fetch({"url": "https://x.edu/f.ics"})
+
+
+# --- Credential redaction -------------------------------------------------
+# An iCal URL *is* the secret: it carries a per-user authtoken. Exception text
+# from requests echoes the full URL, so anything shown to a student or written
+# to a log has to be scrubbed first.
+
+
+def test_redact_masks_moodle_authtoken():
+    url = (
+        "https://lms.example.ac.in/calendar/export_execute.php"
+        "?userid=17244&authtoken=289309feee8fa92d7d0785b8a5009cbf&preset_what=all"
+    )
+    out = ics_source.redact(url)
+
+    assert "289309feee8fa92d7d0785b8a5009cbf" not in out
+    assert "authtoken=***" in out
+    # Non-secret parameters survive, so the message stays diagnosable.
+    assert "userid=17244" in out
+    assert "preset_what=all" in out
+
+
+def test_redact_masks_other_credential_params():
+    for param in ("token", "key", "secret", "password", "sig", "signature"):
+        out = ics_source.redact(f"https://x.test/f?{param}=SUPERSECRET&a=1")
+        assert "SUPERSECRET" not in out, param
+        assert "a=1" in out, param
+
+
+def test_redact_is_case_insensitive():
+    assert "SUPERSECRET" not in ics_source.redact("https://x.test/f?AuthToken=SUPERSECRET")
+
+
+def test_redact_leaves_clean_text_untouched():
+    assert ics_source.redact("nothing sensitive here") == "nothing sensitive here"
+
+
+def test_connection_error_message_never_leaks_the_token(monkeypatch):
+    """A dead host must not echo the student's authtoken back to the screen."""
+    secret = "289309feee8fa92d7d0785b8a5009cbf"
+    url = f"https://lms.example.ac.in/calendar/export.php?authtoken={secret}"
+
+    def boom(*args, **kwargs):
+        raise requests.exceptions.ConnectionError(
+            f"HTTPSConnectionPool(host='lms.example.ac.in', port=443): "
+            f"Max retries exceeded with url: /calendar/export.php?authtoken={secret}"
+        )
+
+    monkeypatch.setattr(ics_source.requests, "get", boom)
+
+    with pytest.raises(ics_source.SourceError) as exc:
+        ics_source.ICSSource().fetch({"url": url})
+
+    assert secret not in str(exc.value)
+
+
+def test_ssl_error_explains_the_certificate_problem(monkeypatch):
+    """A local CA-bundle failure should not read as 'your LMS is broken'."""
+    secret = "abc123def456"
+
+    def boom(*args, **kwargs):
+        raise requests.exceptions.SSLError(
+            f"certificate verify failed: unable to get local issuer certificate "
+            f"url: /export.php?authtoken={secret}"
+        )
+
+    monkeypatch.setattr(ics_source.requests, "get", boom)
+
+    with pytest.raises(ics_source.SourceError) as exc:
+        ics_source.ICSSource().fetch(
+            {"url": f"https://lms.example.ac.in/export.php?authtoken={secret}"}
+        )
+
+    message = str(exc.value)
+    assert secret not in message
+    assert "certificate" in message.lower()

@@ -26,6 +26,23 @@ logger = get_logger(__name__)
 FETCH_TIMEOUT = 20
 MAX_FEED_BYTES = 5 * 1024 * 1024
 
+# Query parameters that carry a private credential. Moodle uses `authtoken`,
+# Canvas and Outlook embed opaque per-user keys in the path or query.
+_SECRET_PARAMS = re.compile(
+    r"((?:authtoken|token|key|secret|password|sig|signature)=)[^&\s\"']+",
+    re.IGNORECASE,
+)
+
+
+def redact(text: str) -> str:
+    """Mask credential-bearing query parameters in a URL or error string.
+
+    Exception text from `requests` echoes the full URL, and an iCal URL is
+    itself the secret. Anything shown to a student or written to a log must
+    pass through here first.
+    """
+    return _SECRET_PARAMS.sub(r"\1***", text)
+
 # Keywords used to infer a task type from the event title.
 TYPE_KEYWORDS = (
     ("quiz", "Quiz"),
@@ -179,8 +196,21 @@ class ICSSource(BaseSource):
             )
         except requests.exceptions.Timeout as exc:
             raise SourceError("The calendar feed timed out.") from exc
+        except requests.exceptions.SSLError as exc:
+            logger.warning("TLS failure for calendar feed: %s", redact(str(exc)))
+            raise SourceError(
+                "Could not verify the security certificate of the calendar "
+                "server. This is usually a missing certificate bundle on the "
+                "machine running CampusSync, not a problem with your LMS."
+            ) from exc
         except requests.exceptions.RequestException as exc:
-            raise SourceError(f"Could not reach the calendar feed: {exc}") from exc
+            # The exception text echoes the full URL, which carries the
+            # student's private authtoken. Never surface it verbatim.
+            logger.warning("Calendar feed unreachable: %s", redact(str(exc)))
+            raise SourceError(
+                "Could not reach the calendar feed. Check the URL and that "
+                "the server is reachable from this machine."
+            ) from exc
 
         if response.status_code == 404:
             raise SourceError("The calendar feed was not found (404).")
