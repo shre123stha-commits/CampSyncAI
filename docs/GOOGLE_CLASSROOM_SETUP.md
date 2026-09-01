@@ -154,15 +154,42 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 
 ## Step 6 — Restart and verify
 
-```bash
-make backend
+**`.env` is only read when the backend starts.** Editing it while the server
+is running changes nothing — this is the second most common reason people
+think the setup failed. Stop the backend with `Ctrl+C` and start it again.
+
+Windows PowerShell:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+cd backend
+python -m uvicorn api.main:app --reload --port 8000
 ```
 
-Check the server picked them up:
+macOS / Linux:
 
 ```bash
-curl -s localhost:8000/sources/status \
-  -H "Authorization: Bearer <your-token>"
+source .venv/bin/activate
+cd backend
+python -m uvicorn api.main:app --reload --port 8000
+```
+
+The quickest check needs no token — just confirm the app now considers
+Classroom configured:
+
+```powershell
+cd backend
+python -c "import config; print(config.classroom_configured())"
+```
+
+`True` means the credentials were found. If it prints `False`, see the
+troubleshooting note below — **both** the client ID *and* the secret must be
+set; one alone is not enough.
+
+You can also check the running server:
+
+```bash
+curl -s localhost:8000/sources/status -H "Authorization: Bearer <your-token>"
 ```
 
 You want `"classroom_available": true`.
@@ -183,7 +210,8 @@ dashboard and refresh; coursework appears alongside your other tasks.
 | `redirect_uri_mismatch` | The URI in the console differs from `GOOGLE_REDIRECT_URI` | Compare character by character — port, trailing slash, http vs https |
 | `403: access_denied` | Your account is not a test user | Add it under consent screen → Test users |
 | `Classroom API has not been used` | API not enabled | Step 2 |
-| Card still says "Unavailable" | `.env` not loaded | Restart the backend; confirm `.env` is in the **repo root** |
+| Card still says "Unavailable" | `.env` not loaded, or only one of the two values is set | Restart the backend — `.env` is read only at startup. Both `GOOGLE_CLIENT_ID` *and* `GOOGLE_CLIENT_SECRET` must be non-empty. Verify with `python -c "import config; print(config.classroom_configured())"` from `backend/` |
+| Card still says "Unavailable" after a restart | The file is named `.env.txt` | Windows hides known extensions. In Explorer turn on **View → File name extensions** and rename it to exactly `.env` |
 | `Google did not return a refresh token` | Google only sends one on first consent | Revoke at <https://myaccount.google.com/permissions>, then reconnect |
 | `Stored credential could not be decrypted` | `SECRET_KEY` changed | Disconnect and reconnect the source |
 | No coursework appears | Classroom account has no active courses | Test with an account that is enrolled in a course with assignments |
