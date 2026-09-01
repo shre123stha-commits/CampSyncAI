@@ -7,11 +7,11 @@ from frontend.api.backend_api import (
     logout,
     refresh_data,
     set_task_completed,
-    upload_document,
 )
 from frontend.components.deadline_text import format_days_remaining
 from frontend.components.plan_view import render_empty_state
 from frontend.components.planner_cards import planner_cards
+from frontend.components.upload_form import render_upload_controls
 
 PRIORITY_ICON = {"High": "🔴", "Medium": "🟠", "Low": "🟢"}
 
@@ -55,33 +55,8 @@ def _upload_expander():
             "override the sample data. No university password required."
         )
 
-        col1, col2 = st.columns(2)
-
-        for column, kind, label in (
-            (col1, "timetable", "Timetable"),
-            (col2, "lms", "LMS / assignments"),
-        ):
-            with column:
-                uploaded = st.file_uploader(
-                    label, type=["docx"], key=f"upload_{kind}"
-                )
-
-                if uploaded is not None and st.button(
-                    f"Upload {label}", key=f"btn_{kind}", use_container_width=True
-                ):
-                    try:
-                        upload_document(
-                            st.session_state.token,
-                            kind,
-                            uploaded.name,
-                            uploaded.getvalue(),
-                        )
-                        st.session_state.pop("task_cache", None)
-                        st.session_state.pop("plan_cache", None)
-                        st.success(f"{label} uploaded.")
-                        st.rerun()
-                    except BackendError as exc:
-                        st.error(str(exc))
+        if render_upload_controls():
+            st.rerun()
 
 
 def _task_row(task):

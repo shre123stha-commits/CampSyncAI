@@ -13,6 +13,7 @@ from frontend.api.backend_api import (
     disconnect_source,
     list_sources,
 )
+from frontend.components.upload_form import render_upload_controls
 
 ICON = {
     "document": "📄",
@@ -56,10 +57,15 @@ def show_sources():
 
             with col1:
                 st.subheader(f"{ICON.get(kind, '🔌')} {source['name']}")
-                st.caption(source["note"])
+                if kind != "document":
+                    st.caption(source["note"])
 
             with col2:
-                if source["connected"]:
+                if kind == "document":
+                    # Documents are not an account you connect to; the path is
+                    # always open. "Not connected" read as a broken feature.
+                    st.success("Always on")
+                elif source["connected"]:
                     st.success("Connected")
                 elif not source["available"]:
                     st.caption("Unavailable")
@@ -76,9 +82,13 @@ def show_sources():
 
             if kind == "document":
                 st.caption(
-                    "Upload documents from the dashboard. Always available, "
-                    "no credentials required."
+                    "Always available, no credentials required. Your files "
+                    "override the sample data."
                 )
+
+                if render_upload_controls(key_prefix="src_"):
+                    _clear_caches()
+                    st.rerun()
 
             elif kind == "ics":
                 if source["connected"]:
@@ -131,10 +141,17 @@ def show_sources():
                             st.error(str(exc))
 
                 elif not source["available"]:
+                    # On a student-run instance the "administrator" is the
+                    # student, so point at the fix rather than at someone else.
                     st.caption(
-                        "The server administrator has not configured Google "
-                        "OAuth credentials (GOOGLE_CLIENT_ID / "
-                        "GOOGLE_CLIENT_SECRET)."
+                        "Needs Google OAuth credentials before it can be "
+                        "switched on. Add GOOGLE_CLIENT_ID and "
+                        "GOOGLE_CLIENT_SECRET to a `.env` file in the project "
+                        "root and restart the backend."
+                    )
+                    st.caption(
+                        "Step-by-step guide: "
+                        "`docs/GOOGLE_CLASSROOM_SETUP.md`"
                     )
 
                 else:
