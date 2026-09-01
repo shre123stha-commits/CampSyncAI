@@ -74,6 +74,21 @@ MIN_STUDY_SLOT_MINUTES = int(os.getenv("MIN_STUDY_SLOT_MINUTES", "30"))
 
 
 # --------------------------------------------------------------------------
+# Caching
+# --------------------------------------------------------------------------
+
+# Document extraction is deterministic per document, so its result is cached
+# on disk. Only the planning call then runs on each request.
+CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() not in {
+    "0",
+    "false",
+    "no",
+}
+
+CACHE_DIR = Path(os.getenv("CACHE_DIR", BASE_DIR / ".cache"))
+
+
+# --------------------------------------------------------------------------
 # Logging
 # --------------------------------------------------------------------------
 

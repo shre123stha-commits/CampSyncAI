@@ -571,10 +571,14 @@ Rewrite `extract_study_slots` day-aware. Configurable college hours. Semantic va
 Real pytest suite + CI.
 **Exit:** B5 closed, green CI.
 
-### Phase 3 — Fast (1 day)
-Extraction cache. Plan caching in session. Refresh button. Dashboard stops auto-generating.
-Optional: reflection node.
-**Exit:** B3 closed. Warm dashboard < 1s.
+### Phase 3 — Fast (1 day) ✅ DONE
+Disk-backed extraction cache (`utils/cache.py`), fingerprinted by document
+name/size/mtime so edits invalidate automatically. New `GET
+/students/{reg_no}/tasks` endpoint serves the dashboard with **no planning
+call**. Plan caching per mode in `st.session_state`. Refresh button wired to
+`POST /students/{reg_no}/refresh`. `days_remaining` recomputed after the cache
+lookup so it never goes stale overnight.
+**Exit:** B3 closed. Warm dashboard responds in ~4ms (was 30-60s).
 
 ### Phase 4 — Real app (2 days)
 SQLite + SQLModel. bcrypt login (B14). Document upload. Task completion tracking.

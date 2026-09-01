@@ -8,7 +8,11 @@ from config import LMS_DIR, TIMETABLE_DIR, get_logger
 from extractors.task_extractor import extract_tasks
 from extractors.timetable_extractor import extract_timetable
 from models.task import Task
+from models.timetable import Lecture
+from utils.cache import cache_get, cache_set, fingerprint_files
 from utils.doc_loader import read_docx
+
+CACHE_NAMESPACE = "extraction"
 
 logger = get_logger(__name__)
 
@@ -59,30 +63,16 @@ def apply_days_remaining(tasks: list[Task]) -> list[Task]:
     return tasks
 
 
-def academic_agent(state):
-    """Read the student's documents and populate timetable + assignments."""
-    reg_no = state["registration_no"]
-
-    logger.info("Academic agent: loading documents for %s", reg_no)
-
-    timetable_path = TIMETABLE_DIR / f"{reg_no}.docx"
-    lms_path = LMS_DIR / f"{reg_no}.docx"
-
-    if not timetable_path.exists() and not lms_path.exists():
-        raise StudentNotFoundError(
-            f"No academic documents found for registration number '{reg_no}'."
-        )
-
-    # ---------------- Timetable ----------------
-
-    lectures = []
+def _extract_documents(
+    reg_no: str, timetable_path, lms_path
+) -> tuple[list[Lecture], list[Task]]:
+    """Run the two extraction LLM calls. Expensive; cached by the caller."""
+    lectures: list[Lecture] = []
 
     if timetable_path.exists():
         lectures = extract_timetable(read_docx(timetable_path))
     else:
         logger.warning("No timetable document for %s", reg_no)
-
-    # ---------------- LMS tasks ----------------
 
     tasks: list[Task] = []
 
@@ -91,7 +81,58 @@ def academic_agent(state):
     else:
         logger.warning("No LMS document for %s", reg_no)
 
+    return lectures, tasks
+
+
+def load_academic_data(reg_no: str) -> tuple[list[Lecture], list[Task]]:
+    """Return (lectures, tasks) for *reg_no*, using the disk cache when warm.
+
+    The cache key includes a fingerprint of the source documents, so editing
+    a document automatically invalidates the entry.
+
+    `days_remaining` is deliberately recomputed *after* the cache lookup:
+    it depends on today's date, so a cached value would go stale overnight.
+    """
+    timetable_path = TIMETABLE_DIR / f"{reg_no}.docx"
+    lms_path = LMS_DIR / f"{reg_no}.docx"
+
+    if not timetable_path.exists() and not lms_path.exists():
+        raise StudentNotFoundError(
+            f"No academic documents found for registration number '{reg_no}'."
+        )
+
+    key = f"{reg_no}-{fingerprint_files(timetable_path, lms_path)}"
+
+    cached = cache_get(CACHE_NAMESPACE, key)
+
+    if cached is not None:
+        lectures = [Lecture(**item) for item in cached.get("lectures", [])]
+        tasks = [Task(**item) for item in cached.get("tasks", [])]
+    else:
+        lectures, tasks = _extract_documents(reg_no, timetable_path, lms_path)
+
+        cache_set(
+            CACHE_NAMESPACE,
+            key,
+            {
+                "lectures": [item.model_dump() for item in lectures],
+                "tasks": [item.model_dump() for item in tasks],
+            },
+        )
+
+    # Date-dependent, so never cached.
     apply_days_remaining(tasks)
+
+    return lectures, tasks
+
+
+def academic_agent(state):
+    """Read the student's documents and populate timetable + assignments."""
+    reg_no = state["registration_no"]
+
+    logger.info("Academic agent: loading documents for %s", reg_no)
+
+    lectures, tasks = load_academic_data(reg_no)
 
     state["timetable"] = lectures
     state["assignments"] = tasks

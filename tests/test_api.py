@@ -168,3 +168,76 @@ def test_empty_plan_is_a_valid_200(client, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["plan"] == []
+
+
+# ---------------- Phase 3: fast task endpoint ----------------
+
+
+def test_tasks_endpoint_returns_sorted_tasks(client, monkeypatch):
+    from models.task import Task
+    from models.timetable import Lecture
+
+    def fake_load(reg_no):
+        return (
+            [
+                Lecture(
+                    day="Monday",
+                    start_time="09:00",
+                    end_time="10:00",
+                    subject="Maths",
+                )
+            ],
+            [
+                Task(
+                    subject="Far",
+                    task_type="Quiz",
+                    platform="LMS",
+                    deadline="30 December 2026",
+                    work="later",
+                    days_remaining=40,
+                ),
+                Task(
+                    subject="Urgent",
+                    task_type="Assignment",
+                    platform="LMS",
+                    deadline="02 August 2026",
+                    work="now",
+                    days_remaining=1,
+                ),
+            ],
+        )
+
+    monkeypatch.setattr(api_main, "load_academic_data", fake_load)
+
+    body = client.get("/students/24BAI1127/tasks").json()
+
+    assert [t["subject"] for t in body["tasks"]] == ["Urgent", "Far"]
+    assert body["tasks"][0]["priority"] == "High"
+    assert body["tasks"][1]["priority"] == "Low"
+    assert len(body["lectures"]) == 1
+
+
+def test_tasks_endpoint_unknown_student_404(client, monkeypatch):
+    def boom(reg_no):
+        raise StudentNotFoundError("No documents for 'NOPE'.")
+
+    monkeypatch.setattr(api_main, "load_academic_data", boom)
+
+    assert client.get("/students/NOPE/tasks").status_code == 404
+
+
+def test_tasks_endpoint_llm_down_503(client, monkeypatch):
+    def boom(reg_no):
+        raise LLMOutputError("LLM service error: refused")
+
+    monkeypatch.setattr(api_main, "load_academic_data", boom)
+
+    assert client.get("/students/X/tasks").status_code == 503
+
+
+def test_refresh_endpoint(client, monkeypatch):
+    monkeypatch.setattr(api_main, "cache_clear", lambda ns: 3)
+
+    body = client.post("/students/24BAI1127/refresh").json()
+
+    assert body == {"cleared": 3}

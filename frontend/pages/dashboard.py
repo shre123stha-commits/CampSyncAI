@@ -1,16 +1,30 @@
 import streamlit as st
 
+from frontend.api.backend_api import BackendError, get_tasks, refresh_student
 from frontend.components.assignment_card import assignment_card
-from frontend.components.plan_view import fetch_plan, render_empty_state
+from frontend.components.plan_view import render_empty_state
 from frontend.components.planner_cards import planner_cards
+
+
+def load_tasks(student_id: str, *, force: bool = False):
+    """Tasks for the dashboard. No planning call, so this is fast."""
+    cache = st.session_state.setdefault("task_cache", {})
+
+    if not force and student_id in cache:
+        return cache[student_id], None
+
+    try:
+        with st.spinner("📚 Loading your academic data…"):
+            data = get_tasks(student_id)
+    except BackendError as exc:
+        return None, str(exc)
+
+    cache[student_id] = data
+    return data, None
 
 
 def show_dashboard():
     student_id = st.session_state.student_id
-
-    # ----------------------------------------------------
-    # HERO
-    # ----------------------------------------------------
 
     st.markdown(
         f"""
@@ -24,46 +38,52 @@ def show_dashboard():
     )
 
     col_a, col_b = st.columns([1, 1])
+
     with col_a:
         if st.button("🔄 Refresh data", use_container_width=True):
+            try:
+                refresh_student(student_id)
+            except BackendError:
+                pass
+            st.session_state.pop("task_cache", None)
             st.session_state.pop("plan_cache", None)
             st.rerun()
+
     with col_b:
         if st.button("🚪 Log out", use_container_width=True):
-            for key in ("logged_in", "student_id", "plan_cache"):
+            for key in ("logged_in", "student_id", "plan_cache", "task_cache"):
                 st.session_state.pop(key, None)
             st.rerun()
 
     st.divider()
 
-    plan, error = fetch_plan(student_id, "day_without_timings")
+    data, error = load_tasks(student_id)
 
     if error:
         st.error(error)
         st.info(
-            "Start the backend with `make backend` (or `docker compose up`) "
-            "and make sure Ollama is running."
+            "Start the backend with `make backend` and make sure Ollama is "
+            "running."
         )
         return
 
-    tasks = plan.get("plan") or []
+    tasks = data.get("tasks") or []
 
     # ----------------------------------------------------
     # SUMMARY
     # ----------------------------------------------------
 
-    total_tasks = len(tasks)
     high_priority = sum(1 for t in tasks if t.get("priority") == "High")
 
     days = [
         t["days_remaining"]
         for t in tasks
-        if isinstance(t.get("days_remaining"), int)
+        if isinstance(t.get("days_remaining"), int) and t["days_remaining"] < 999
     ]
     next_deadline = min(days) if days else None
 
     col1, col2, col3 = st.columns(3)
-    col1.metric("📚 Total Tasks", total_tasks)
+    col1.metric("📚 Total Tasks", len(tasks))
     col2.metric("🔥 High Priority", high_priority)
     col3.metric(
         "⏳ Next Deadline",
@@ -79,7 +99,7 @@ def show_dashboard():
         return
 
     # ----------------------------------------------------
-    # TODAY'S FOCUS
+    # TODAY'S FOCUS  (most urgent task - no LLM needed)
     # ----------------------------------------------------
 
     st.markdown("## 🎯 Today's Focus")
@@ -92,14 +112,16 @@ def show_dashboard():
         if top.get("work"):
             st.write(top["work"])
 
+        meta = []
         if top.get("deadline"):
-            st.write(f"📅 Deadline: {top['deadline']}")
-
+            meta.append(f"📅 **Deadline:** {top['deadline']}")
+        if top.get("days_remaining") is not None:
+            meta.append(f"⏳ **Days left:** {top['days_remaining']}")
         if top.get("priority"):
-            st.write(f"🔥 Priority: {top['priority']}")
+            meta.append(f"🔥 **Priority:** {top['priority']}")
 
-        if top.get("reason"):
-            st.info(top["reason"])
+        if meta:
+            st.markdown(" &nbsp;·&nbsp; ".join(meta))
 
     st.divider()
 
@@ -113,7 +135,7 @@ def show_dashboard():
         assignment_card(
             title=task.get("subject", "Task"),
             due=task.get("deadline", "—"),
-            source="LMS",
+            source=task.get("platform", "LMS"),
             priority=task.get("priority", "Medium"),
         )
 

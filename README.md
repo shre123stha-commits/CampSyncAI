@@ -1,5 +1,7 @@
 # 🎓 CampusSync AI
 
+![CI](https://github.com/shre123stha-commits/CampSyncAI/actions/workflows/ci.yml/badge.svg)
+
 An AI academic planner. It reads a student's timetable and assignment
 documents, works out when they are actually free, and generates a realistic,
 deadline-aware study plan.
@@ -86,6 +88,24 @@ model:
 
 The LLM's job is reading messy documents and composing a humane schedule.
 
+### Caching
+
+Document extraction costs two LLM calls and is **deterministic for a given
+document**, so its result is cached on disk under `backend/.cache/`, keyed by
+a fingerprint (name, size, mtime) of the source files. Editing a document
+invalidates the entry automatically.
+
+`days_remaining` is deliberately recomputed *after* the cache lookup, because
+it depends on today's date — a cached value would be wrong the next morning.
+
+The dashboard calls `GET /students/{reg_no}/tasks`, which skips planning
+entirely. Warm, it responds in **~4ms** instead of 30–60s. Only the planner
+buttons invoke the LLM, and their results are cached per mode in the session.
+
+Clear the cache with the **Refresh data** button, `POST
+/students/{reg_no}/refresh`, or by deleting `backend/.cache/`. Set
+`CACHE_ENABLED=false` to disable it.
+
 ### Self-correcting generation
 
 Every LLM boundary runs the same loop:
@@ -132,6 +152,8 @@ CampSyncAI/
 |---|---|
 | `GET /health` | Liveness |
 | `GET /students` | Registration numbers with documents on file |
+| `GET /students/{reg_no}/tasks` | Tasks + timetable, **no planning step** (fast) |
+| `POST /students/{reg_no}/refresh` | Invalidate the extraction cache |
 | `POST /generate-plan` | Generate a study plan |
 
 ```bash
@@ -160,10 +182,10 @@ No stack trace is ever reachable from the UI.
 make test
 ```
 
-91 tests, ~0.5s, **no Ollama required** — the LLM is stubbed. Covers JSON
+120 tests, ~0.9s, **no Ollama required** — the LLM is stubbed. Covers JSON
 recovery from malformed model output, day-aware slot detection, deadline
 parsing across 8 formats, plan validation rules, the retry loop, and every
-API error path.
+API error path, plus the caching layer.
 
 ---
 
@@ -192,7 +214,7 @@ See [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for the full plan.
 - [x] **Phase 0** — Unified repo, one-command startup, dead code removed
 - [x] **Phase 1** — Reliability: JSON recovery, retry loop, error contract, tests
 - [x] **Phase 2** — Day-aware scheduling + semantic validators
-- [ ] **Phase 3** — Extraction caching, sub-second warm dashboard
+- [x] **Phase 3** — Extraction caching, sub-second warm dashboard
 - [ ] **Phase 4** — SQLite persistence, bcrypt auth, upload, task completion
 - [ ] **Phase 5** — Live sources (ICS, Google Classroom OAuth)
 - [ ] **Phase 6** — Human-in-the-loop feedback, polish

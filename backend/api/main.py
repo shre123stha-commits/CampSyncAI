@@ -13,11 +13,16 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
-from agents.academic_agent import StudentNotFoundError  # noqa: E402
+from agents.academic_agent import (  # noqa: E402
+    StudentNotFoundError,
+    load_academic_data,
+)
 from config import LMS_DIR, TIMETABLE_DIR, configure_logging, get_logger  # noqa: E402
 from graph import graph  # noqa: E402
 from models.enums import PlanMode  # noqa: E402
 from models.study_plan import StudyPlanResponse  # noqa: E402
+from scheduler.plan_validator import expected_priority  # noqa: E402
+from utils.cache import cache_clear  # noqa: E402
 from utils.llm_json import LLMOutputError  # noqa: E402
 
 configure_logging()
@@ -89,6 +94,52 @@ def list_students():
             known.update(p.stem for p in directory.glob("*.docx"))
 
     return {"students": sorted(known)}
+
+
+@app.get("/students/{registration_no}/tasks")
+def student_tasks(registration_no: str):
+    """The student's tasks and timetable, with no planning step.
+
+    Served from the extraction cache when warm, so the dashboard can render
+    immediately instead of waiting on the planner.
+    """
+    try:
+        lectures, tasks = load_academic_data(registration_no)
+
+    except StudentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    except LLMOutputError:
+        raise
+
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Unexpected error while loading tasks")
+        raise HTTPException(
+            status_code=500, detail="Could not load your academic data."
+        ) from exc
+
+    payload = []
+
+    for task in sorted(tasks, key=lambda t: t.days_remaining):
+        item = task.model_dump()
+        item["priority"] = expected_priority(task.days_remaining).value
+        payload.append(item)
+
+    return {
+        "registration_no": registration_no,
+        "tasks": payload,
+        "lectures": [lecture.model_dump() for lecture in lectures],
+    }
+
+
+@app.post("/students/{registration_no}/refresh")
+def refresh_student(registration_no: str):
+    """Drop the cached extraction so the next request re-reads the documents."""
+    removed = cache_clear("extraction")
+
+    logger.info("Cleared %d cache entry/entries", removed)
+
+    return {"cleared": removed}
 
 
 @app.post("/generate-plan", response_model=StudyPlanResponse)

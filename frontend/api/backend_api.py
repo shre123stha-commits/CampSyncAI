@@ -56,6 +56,19 @@ def generate_plan(student_id: str, mode: str) -> dict:
     )
 
 
+def get_tasks(student_id: str) -> dict:
+    """Fetch tasks + timetable without running the planner.
+
+    Served from the backend's extraction cache when warm, so this is fast.
+    """
+    return _request("GET", f"/students/{student_id}/tasks")
+
+
+def refresh_student(student_id: str) -> dict:
+    """Invalidate the backend's cached extraction for this student."""
+    return _request("POST", f"/students/{student_id}/refresh")
+
+
 def list_students() -> list[str]:
     try:
         return _request("GET", "/students").get("students", [])
