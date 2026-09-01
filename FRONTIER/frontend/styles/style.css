@@ -1,0 +1,421 @@
+/* =====================================================
+   CAMPUSSYNC AI THEME
+===================================================== */
+
+/* ---------- Background ---------- */
+
+.stApp{
+    background: linear-gradient(-45deg,#0B1120,#111827,#1E1B4B,#0F172A);
+    background-size:400% 400%;
+    animation:gradientBG 18s ease infinite;
+    color:white;
+}
+
+@keyframes gradientBG{
+
+0%{
+background-position:0% 50%;
+}
+
+50%{
+background-position:100% 50%;
+}
+
+100%{
+background-position:0% 50%;
+}
+
+}
+
+/* =====================================================
+   FLOATING GLOWING BLOBS
+===================================================== */
+
+.stApp::before{
+
+content:"";
+
+position:fixed;
+
+width:420px;
+
+height:420px;
+
+background:#6366F1;
+
+border-radius:50%;
+
+filter:blur(180px);
+
+opacity:.20;
+
+top:-120px;
+
+left:-120px;
+
+animation:floatBlob1 14s ease-in-out infinite alternate;
+
+z-index:-1;
+
+}
+
+.stApp::after{
+
+content:"";
+
+position:fixed;
+
+width:350px;
+
+height:350px;
+
+background:#A855F7;
+
+border-radius:50%;
+
+filter:blur(170px);
+
+opacity:.18;
+
+bottom:-80px;
+
+right:-80px;
+
+animation:floatBlob2 16s ease-in-out infinite alternate;
+
+z-index:-1;
+
+}
+
+@keyframes floatBlob1{
+
+from{
+
+transform:translate(0px,0px);
+
+}
+
+to{
+
+transform:translate(160px,90px);
+
+}
+
+}
+
+@keyframes floatBlob2{
+
+from{
+
+transform:translate(0px,0px);
+
+}
+
+to{
+
+transform:translate(-120px,-70px);
+
+}
+
+}
+
+/* =====================================================
+   HERO SECTION
+===================================================== */
+
+.main-title{
+
+font-size:58px;
+
+font-weight:800;
+
+background:linear-gradient(90deg,#60A5FA,#A855F7);
+
+-webkit-background-clip:text;
+
+-webkit-text-fill-color:transparent;
+
+margin-bottom:5px;
+
+}
+
+.subtitle{
+
+font-size:22px;
+
+color:#CBD5E1;
+
+margin-bottom:20px;
+
+}
+
+.welcome{
+
+font-size:24px;
+
+font-weight:600;
+
+color:white;
+
+}
+
+.status{
+
+font-size:18px;
+
+font-weight:bold;
+
+color:#22C55E;
+
+margin-top:10px;
+
+}
+
+/* =====================================================
+   METRIC CARDS
+===================================================== */
+
+[data-testid="stMetric"]{
+
+background:rgba(255,255,255,.08);
+
+border-radius:18px;
+
+padding:20px;
+
+border:1px solid rgba(255,255,255,.12);
+
+backdrop-filter:blur(18px);
+
+transition:.3s;
+
+box-shadow:0 8px 25px rgba(0,0,0,.25);
+
+}
+
+[data-testid="stMetric"]:hover{
+
+transform:translateY(-6px);
+
+box-shadow:0 10px 35px rgba(99,102,241,.40);
+
+}
+
+/* =====================================================
+   GLASS CARDS
+===================================================== */
+
+.glass{
+
+background:rgba(255,255,255,.08);
+
+backdrop-filter:blur(18px);
+
+border-radius:20px;
+
+padding:22px;
+
+border:1px solid rgba(255,255,255,.12);
+
+box-shadow:0 8px 25px rgba(0,0,0,.25);
+
+transition:.3s;
+
+margin-bottom:18px;
+
+}
+
+.glass:hover{
+
+transform:translateY(-6px);
+
+box-shadow:0 12px 35px rgba(99,102,241,.40);
+
+border:1px solid rgba(99,102,241,.40);
+
+}
+
+/* =====================================================
+   BUTTONS
+===================================================== */
+
+.stButton>button{
+
+width:100%;
+
+background:linear-gradient(90deg,#6366F1,#8B5CF6);
+
+color:white;
+
+border:none;
+
+border-radius:14px;
+
+padding:12px;
+
+font-size:16px;
+
+font-weight:bold;
+
+transition:.3s;
+
+}
+
+.stButton>button:hover{
+
+transform:translateY(-4px);
+
+box-shadow:0 10px 30px rgba(139,92,246,.50);
+
+}
+
+/* =====================================================
+   TEXT INPUT
+===================================================== */
+
+.stTextInput>div>div>input{
+
+background:rgba(255,255,255,.08);
+
+border-radius:12px;
+
+color:white;
+
+border:1px solid rgba(255,255,255,.15);
+
+}
+
+/* =====================================================
+   HEADINGS
+===================================================== */
+
+h1,h2,h3{
+
+color:white;
+
+}
+
+hr{
+
+border:1px solid rgba(255,255,255,.08);
+
+}
+
+/* =====================================================
+   SUCCESS / WARNING / INFO
+===================================================== */
+
+[data-testid="stAlert"]{
+
+border-radius:14px;
+
+}
+
+/* =====================================================
+   SCROLLBAR
+===================================================== */
+
+::-webkit-scrollbar{
+
+width:10px;
+
+}
+
+::-webkit-scrollbar-track{
+
+background:#111827;
+
+}
+
+::-webkit-scrollbar-thumb{
+
+background:#6366F1;
+
+border-radius:10px;
+
+}
+
+::-webkit-scrollbar-thumb:hover{
+
+background:#8B5CF6;
+
+}
+
+/* =====================================================
+   FADE ANIMATION
+===================================================== */
+
+div[data-testid="stVerticalBlock"]>div{
+
+animation:fadeUp .8s ease;
+
+}
+
+@keyframes fadeUp{
+
+from{
+
+opacity:0;
+
+transform:translateY(20px);
+
+}
+
+to{
+
+opacity:1;
+
+transform:translateY(0);
+
+}
+
+}
+
+/* =====================================================
+   PLANNER CARDS
+===================================================== */
+
+.planner-card{
+
+background:rgba(255,255,255,.08);
+
+padding:22px;
+
+border-radius:20px;
+
+border:1px solid rgba(255,255,255,.10);
+
+backdrop-filter:blur(18px);
+
+box-shadow:0 8px 20px rgba(0,0,0,.20);
+
+transition:.3s;
+
+margin-bottom:18px;
+
+}
+
+.planner-card:hover{
+
+transform:translateY(-6px);
+
+box-shadow:0 10px 35px rgba(168,85,247,.45);
+
+}
+
+/* =====================================================
+   FOOTER
+===================================================== */
+
+footer{
+
+visibility:hidden;
+
+}
+
+header{
+
+visibility:hidden;
+
+}
+
