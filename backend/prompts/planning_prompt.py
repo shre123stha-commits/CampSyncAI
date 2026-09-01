@@ -22,6 +22,8 @@ Planning Instructions
 {mode_instruction}
 
 ==================================================
+{feedback_block}
+==================================================
 
 Lecture Timetable
 
@@ -176,3 +178,19 @@ Low
 8. days_remaining must contain the approximate number of days remaining until the deadline based on the Current Date.
 
 9. reason should briefly explain why this task received its priority."""
+
+
+FEEDBACK_BLOCK = """
+Student Feedback On The Previous Plan
+
+The student reviewed your last plan and asked for these changes:
+
+{feedback}
+
+Honour this request wherever it does not break a hard rule.
+
+You must still respect every deadline, keep sessions inside the listed study
+slots, and keep the priority bands exactly as computed. If the request would
+break one of those, satisfy it as closely as you can and say what you did in
+the affected task's reason field.
+"""

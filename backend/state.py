@@ -14,3 +14,6 @@ class PlannerState(TypedDict, total=False):
     study_plan: Optional[StudyPlanResponse]
     # Fingerprints of tasks the student has completed; excluded from planning.
     exclude_fingerprints: set[str]
+    # Free-text steer from the student on a previous plan, e.g. "I have a
+    # match on Friday evening". Empty on a first generation.
+    feedback: str

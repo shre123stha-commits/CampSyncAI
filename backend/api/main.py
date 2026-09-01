@@ -218,6 +218,9 @@ def generate_plan(request: PlanRequest) -> StudyPlanResponse:
 
 class MyPlanRequest(BaseModel):
     mode: PlanMode = PlanMode.DAY_WITHOUT_TIMINGS
+    # Optional steer from the student on the previous plan, e.g. "I have a
+    # match on Friday evening, move that work earlier".
+    feedback: str = Field(default="", max_length=500)
 
 
 @app.post("/my/generate-plan", response_model=StudyPlanResponse)
@@ -249,6 +252,7 @@ def generate_my_plan(
         "classroom_tasks": [],
         "study_plan": None,
         "exclude_fingerprints": done,
+        "feedback": request.feedback,
     }
 
     try:

@@ -154,9 +154,13 @@ def disconnect_source(token: str, source_type: str) -> dict:
 # --------------------------------------------------------------------------
 
 
-def generate_my_plan(token: str, mode: str) -> dict:
+def generate_my_plan(token: str, mode: str, feedback: str = "") -> dict:
+    """Generate a plan. `feedback` re-plans in response to a student's note."""
     return _request(
-        "POST", "/my/generate-plan", token=token, json={"mode": mode}
+        "POST",
+        "/my/generate-plan",
+        token=token,
+        json={"mode": mode, "feedback": feedback},
     )
 
 

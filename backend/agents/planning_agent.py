@@ -17,7 +17,7 @@ from datetime import datetime
 from config import LLM_MAX_RETRIES, get_logger, llm
 from models.enums import PlanMode
 from models.study_plan import PlannedItem, StudyPlanResponse
-from prompts.planning_prompt import PLANNING_PROMPT
+from prompts.planning_prompt import FEEDBACK_BLOCK, PLANNING_PROMPT
 from scheduler.plan_validator import expected_priority, validate_plan
 from scheduler.study_slots import extract_study_slots
 from utils.llm_json import LLMOutputError, invoke_json
@@ -25,6 +25,28 @@ from utils.mode_prompt import get_mode_instruction
 from utils.prompt_formatter import format_slots, format_tasks, format_timetable
 
 logger = get_logger(__name__)
+
+# Feedback is free text typed by a student and is interpolated into the
+# prompt, so it is untrusted input. We cap its length and strip the delimiter
+# the prompt uses for its own sections, so a student cannot forge a new
+# instruction block. The hard guarantees (deadlines, priority bands, slot
+# containment) are enforced in Python by validate_plan and _reconcile
+# regardless of what the text says, so this is defence in depth rather than
+# the only safeguard.
+MAX_FEEDBACK_CHARS = 500
+
+
+def sanitise_feedback(feedback: str | None) -> str:
+    """Trim and defang student feedback before it enters the prompt."""
+    if not feedback:
+        return ""
+
+    cleaned = str(feedback).replace("=" * 10, " ").strip()
+
+    if len(cleaned) > MAX_FEEDBACK_CHARS:
+        cleaned = cleaned[:MAX_FEEDBACK_CHARS].rstrip() + "…"
+
+    return cleaned
 
 
 def _coerce_items(data) -> list[PlannedItem]:
@@ -99,9 +121,15 @@ def planning_agent(state):
         )
         return state
 
+    feedback = sanitise_feedback(state.get("feedback"))
+
+    if feedback:
+        logger.info("Planning agent: applying student feedback (%d chars)", len(feedback))
+
     base_prompt = PLANNING_PROMPT.format(
         today=today.strftime("%d %B %Y"),
         mode_instruction=get_mode_instruction(mode.value),
+        feedback_block=FEEDBACK_BLOCK.format(feedback=feedback) if feedback else "",
         timetable=format_timetable(state.get("timetable", [])),
         slots=format_slots(slots),
         tasks=format_tasks(tasks),

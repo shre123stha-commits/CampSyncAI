@@ -4,7 +4,6 @@ import builtins
 import sys
 
 import pytest
-
 from utils import tls
 
 

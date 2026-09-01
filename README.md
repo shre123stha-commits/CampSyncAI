@@ -11,6 +11,10 @@ in their heads, students get one consolidated plan.
 
 ---
 
+**[▶ Demo runbook](DEMO.md)** · **[Architecture](docs/ARCHITECTURE.md)** · **[Google Classroom setup](docs/GOOGLE_CLASSROOM_SETUP.md)**
+
+---
+
 ## Quick start
 
 ```bash
@@ -58,6 +62,9 @@ college hours, log level, backend URL) is environment-driven.
 ---
 
 ## Architecture
+
+See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for full diagrams —
+system overview, the self-correcting loop, and the feedback sequence.
 
 ```
         Streamlit frontend
@@ -149,11 +156,14 @@ CampSyncAI/
 │   ├── models/                # Task · Lecture · FreeSlot · StudyPlan · enums
 │   ├── prompts/
 │   ├── utils/                 # safe_json · llm_json · doc_loader · formatters
-│   ├── sources/               # future: OAuth/ICS/Classroom adapters
+│   ├── sources/               # pluggable adapters: docs · ICS · Classroom
 │   ├── graph.py               # LangGraph wiring
 │   └── config.py              # all env-driven configuration
-├── frontend/                  # Streamlit
-├── tests/                     # 91 tests, no LLM required
+├── frontend/
+│   ├── views/                 # login · dashboard · sources (not `pages/`)
+│   ├── components/            # plan_view · cards · deadline_text
+│   └── api/                   # backend client
+├── tests/                     # 301 tests, no LLM required
 ├── docker-compose.yml
 ├── Makefile
 └── PROJECT_PLAN.md            # full engineering plan
@@ -218,10 +228,28 @@ No stack trace is ever reachable from the UI.
 make test
 ```
 
-277 tests, ~25s, **no Ollama required** — the LLM is stubbed. Covers JSON
+301 tests, ~25s, **no Ollama required** — the LLM is stubbed. Covers JSON
 recovery from malformed model output, day-aware slot detection, deadline
 parsing across 8 formats, plan validation rules, the retry loop, and every
 API error path, plus the caching layer.
+
+---
+
+## Human-in-the-loop feedback
+
+A generated plan is a suggestion, not an instruction. Every plan page has a
+feedback box:
+
+> *"I have football practice Friday evening, move that work earlier"*
+
+The note is added to the planning prompt and the schedule is rebuilt around
+it. What **cannot** change is the arithmetic: deadlines, days remaining and
+priority bands are recomputed in Python after every generation, so a student
+can ask for anything but cannot talk the system into misreporting a deadline.
+
+Feedback is untrusted input, so it is capped at 500 characters and the
+prompt's section delimiter is stripped before interpolation. There is a test
+that feeds the model hostile feedback and asserts the computed values survive.
 
 ---
 
@@ -272,7 +300,7 @@ See [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for the full plan.
 - [x] **Phase 3** — Extraction caching, sub-second warm dashboard
 - [x] **Phase 4** — SQLite persistence, bcrypt auth, upload, task completion
 - [x] **Phase 5** — Live sources (ICS, Google Classroom OAuth)
-- [ ] **Phase 6** — Human-in-the-loop feedback, polish
+- [x] **Phase 6** — Human-in-the-loop feedback, architecture docs, demo runbook
 
 ---
 
