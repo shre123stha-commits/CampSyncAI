@@ -12,6 +12,7 @@ import sources.registry as registry
 from db.crypto import decrypt
 from db.models import SourceConnection, SourceType
 from db.security import clear_sessions
+import db.session as db_session
 from db.session import get_session
 from models.task import Task
 from sources.base import SourceError
@@ -25,6 +26,10 @@ def ctx(monkeypatch):
         poolclass=StaticPool,
     )
     SQLModel.metadata.create_all(engine)
+
+    # Code that opens its own session (session persistence) must use the
+    # test engine too, not the real database file.
+    db_session.set_engine(engine)
 
     def override():
         with Session(engine) as session:
@@ -84,8 +89,29 @@ def test_lists_all_sources(ctx):
     body = client.get("/sources", headers=head(token)).json()
     types = {s["type"] for s in body["sources"]}
 
-    assert types == {"document", "ics", "classroom"}
+    assert types == {"document", "ics", "classroom", "teams"}
     assert all(s["connected"] is False for s in body["sources"])
+
+
+def test_teams_marked_unavailable_without_config(ctx, monkeypatch):
+    """Teams must self-disable rather than offering a button that 503s."""
+    client, _ = ctx
+    token = token_for(client)
+
+    body = client.get("/sources", headers=head(token)).json()
+    teams = next(s for s in body["sources"] if s["type"] == "teams")
+
+    assert teams["available"] is False
+
+
+def test_teams_authorize_requires_configuration(ctx):
+    client, _ = ctx
+    token = token_for(client)
+
+    response = client.get("/sources/teams/authorize", headers=head(token))
+
+    assert response.status_code == 503
+    assert "not configured" in response.json()["detail"].lower()
 
 
 def test_classroom_marked_unavailable_without_config(ctx, monkeypatch):

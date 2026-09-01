@@ -46,17 +46,64 @@ LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0"))
 LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "2"))
 
 
-llm = ChatOllama(
-    model=PLANNING_MODEL,
-    temperature=LLM_TEMPERATURE,
-    base_url=OLLAMA_BASE_URL,
-)
+# Which backend serves the model. "ollama" runs locally and keeps every
+# document on the machine; "openai" targets any OpenAI-compatible endpoint
+# (OpenAI, Groq, Together, OpenRouter, vLLM) so a hosted deployment does not
+# require every user to install Ollama.
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").strip().lower()
 
-extraction_llm = ChatOllama(
-    model=EXTRACTION_MODEL,
-    temperature=LLM_TEMPERATURE,
-    base_url=OLLAMA_BASE_URL,
-)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+
+# Override to point at a compatible provider, e.g.
+# https://api.groq.com/openai/v1
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "")
+
+LLM_TIMEOUT_SECONDS = int(os.getenv("LLM_TIMEOUT_SECONDS", "120"))
+
+
+def _build_llm(model: str):
+    """Construct the chat model for the configured provider.
+
+    Selection is by environment variable so the same image can run locally
+    against Ollama and in a hosted deployment against an API, with no code
+    change and no second build.
+    """
+    if LLM_PROVIDER in {"openai", "openai-compatible", "api"}:
+        try:
+            from langchain_openai import ChatOpenAI
+        except ImportError as exc:  # pragma: no cover - depends on extras
+            raise RuntimeError(
+                "LLM_PROVIDER is 'openai' but langchain-openai is not "
+                "installed. Install it with: pip install langchain-openai"
+            ) from exc
+
+        if not OPENAI_API_KEY:
+            raise RuntimeError(
+                "LLM_PROVIDER is 'openai' but OPENAI_API_KEY is not set."
+            )
+
+        kwargs = {
+            "model": model,
+            "temperature": LLM_TEMPERATURE,
+            "api_key": OPENAI_API_KEY,
+            "timeout": LLM_TIMEOUT_SECONDS,
+        }
+
+        if OPENAI_BASE_URL:
+            kwargs["base_url"] = OPENAI_BASE_URL
+
+        return ChatOpenAI(**kwargs)
+
+    return ChatOllama(
+        model=model,
+        temperature=LLM_TEMPERATURE,
+        base_url=OLLAMA_BASE_URL,
+    )
+
+
+llm = _build_llm(PLANNING_MODEL)
+
+extraction_llm = _build_llm(EXTRACTION_MODEL)
 
 
 # --------------------------------------------------------------------------
@@ -168,3 +215,30 @@ CLASSROOM_SCOPES = [
 
 def classroom_configured() -> bool:
     return bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+
+
+# Microsoft Teams / Microsoft 365. Leave unset to keep the integration off.
+MS_CLIENT_ID = os.getenv("MS_CLIENT_ID", "")
+MS_CLIENT_SECRET = os.getenv("MS_CLIENT_SECRET", "")
+MS_REDIRECT_URI = os.getenv(
+    "MS_REDIRECT_URI", "http://localhost:8000/sources/teams/callback"
+)
+
+# "common" lets any work, school or personal account sign in. Set this to a
+# specific tenant id to restrict the app to one university.
+MS_TENANT = os.getenv("MS_TENANT", "common")
+
+# EduAssignments.ReadBasic is admin-consent-only in every tenant, so we also
+# request Calendars.Read, which a student can usually approve alone. Teams
+# assignment due dates appear as calendar events, so the fallback still
+# produces deadlines when IT has not approved the app.
+MS_SCOPES = [
+    "offline_access",
+    "User.Read",
+    "Calendars.Read",
+    "EduAssignments.ReadBasic",
+]
+
+
+def teams_configured() -> bool:
+    return bool(MS_CLIENT_ID and MS_CLIENT_SECRET)

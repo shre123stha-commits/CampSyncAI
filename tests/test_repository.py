@@ -1,6 +1,7 @@
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
+import db.session as db_session
 from db.models import SourceType, TaskRecord
 from db.repository import (
     DuplicateStudentError,
@@ -24,6 +25,10 @@ def session():
         "sqlite://", connect_args={"check_same_thread": False}
     )
     SQLModel.metadata.create_all(engine)
+
+    # Code that opens its own session (session persistence) must use the
+    # test engine too, not the real database file.
+    db_session.set_engine(engine)
     with Session(engine) as s:
         yield s
 

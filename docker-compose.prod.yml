@@ -1,0 +1,87 @@
+# Production-ish stack: Postgres, a hosted model, persistent volumes.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Differences from the dev compose file that matter for multiple users:
+#
+#   * Postgres instead of SQLite. SQLite serialises writes and does not
+#     survive a container rebuild; with a few dozen students both bite.
+#   * LLM_PROVIDER=openai by default, so nobody has to install Ollama. Set it
+#     back to "ollama" and point OLLAMA_BASE_URL at a reachable host to keep
+#     inference local.
+#   * SECRET_KEY is required, not generated. A generated key would rotate on
+#     every rebuild and silently invalidate every stored source credential.
+#   * Named volumes for uploads and the extraction cache, so a redeploy does
+#     not throw away student documents or force every plan to be recomputed.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-campussync}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-campussync}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # The backend must not start before the database accepts connections.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-campussync}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-campussync}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-campussync}
+
+      # Rotating this invalidates every stored source credential, so it must
+      # be set explicitly and kept stable across deploys.
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      PLANNING_MODEL: ${PLANNING_MODEL:-gpt-4o-mini}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+
+      MS_CLIENT_ID: ${MS_CLIENT_ID:-}
+      MS_CLIENT_SECRET: ${MS_CLIENT_SECRET:-}
+      MS_REDIRECT_URI: ${MS_REDIRECT_URI:-}
+      MS_TENANT: ${MS_TENANT:-common}
+
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-12}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - uploads:/app/data/uploads
+      - cache:/app/.cache
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      BACKEND_URL: http://backend:8000
+    ports:
+      - "8501:8501"
+
+volumes:
+  pgdata:
+  uploads:
+  cache:

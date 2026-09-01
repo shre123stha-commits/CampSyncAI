@@ -9,6 +9,7 @@ import agents.academic_agent as academic
 import api.main as api_main
 import db.models  # noqa: F401 - registers the tables on SQLModel.metadata
 from db.security import clear_sessions
+import db.session as db_session
 from db.session import get_session
 from models.task import Task
 from models.timetable import Lecture
@@ -27,6 +28,10 @@ def client(monkeypatch, tmp_path):
         poolclass=StaticPool,
     )
     SQLModel.metadata.create_all(engine)
+
+    # Code that opens its own session (session persistence) must use the
+    # test engine too, not the real database file.
+    db_session.set_engine(engine)
 
     def override_session():
         with Session(engine) as session:

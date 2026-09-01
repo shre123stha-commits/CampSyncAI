@@ -12,6 +12,7 @@ from models.task import Task
 from sources.base import SourceError
 from sources.classroom_source import ClassroomSource
 from sources.ics_source import ICSSource
+from sources.teams_source import TeamsSource
 
 logger = get_logger(__name__)
 
@@ -19,13 +20,14 @@ logger = get_logger(__name__)
 ADAPTERS = {
     SourceType.ICS: ICSSource(),
     SourceType.CLASSROOM: ClassroomSource(),
+    SourceType.TEAMS: TeamsSource(),
 }
 
 
 def _config_for(source_type: SourceType, secret: str) -> dict:
     if source_type is SourceType.ICS:
         return {"url": secret}
-    if source_type is SourceType.CLASSROOM:
+    if source_type in (SourceType.CLASSROOM, SourceType.TEAMS):
         return {"refresh_token": secret}
     return {}
 

@@ -11,7 +11,8 @@ in their heads, students get one consolidated plan.
 
 ---
 
-**[▶ Demo runbook](DEMO.md)** · **[Architecture](docs/ARCHITECTURE.md)** · **[Google Classroom setup](docs/GOOGLE_CLASSROOM_SETUP.md)**
+**[Architecture](docs/ARCHITECTURE.md)** · **[Deployment](docs/DEPLOYMENT.md)** · **[Demo runbook](DEMO.md)**
+**Integrations:** [Google Classroom](docs/GOOGLE_CLASSROOM_SETUP.md) · [Microsoft Teams](docs/MICROSOFT_TEAMS_SETUP.md)
 
 ---
 
@@ -163,7 +164,7 @@ CampSyncAI/
 │   ├── views/                 # login · dashboard · sources (not `pages/`)
 │   ├── components/            # plan_view · cards · deadline_text
 │   └── api/                   # backend client
-├── tests/                     # 301 tests, no LLM required
+├── tests/                     # 324 tests, no LLM required
 ├── docker-compose.yml
 ├── Makefile
 └── PROJECT_PLAN.md            # full engineering plan
@@ -228,7 +229,7 @@ No stack trace is ever reachable from the UI.
 make test
 ```
 
-301 tests, ~25s, **no Ollama required** — the LLM is stubbed. Covers JSON
+324 tests, ~26s, **no Ollama required** — the LLM is stubbed. Covers JSON
 recovery from malformed model output, day-aware slot detection, deadline
 parsing across 8 formats, plan validation rules, the retry loop, and every
 API error path, plus the caching layer.
@@ -255,9 +256,7 @@ that feeds the model hostile feedback and asserts the computed values survive.
 
 ## Data sources
 
-Today the system reads `.docx` files from `backend/data/documents/`.
-
-Planned integrations use the `sources/` adapter seam. **We deliberately never
+**We deliberately never
 handle university passwords** — every integration is OAuth or a
 student-generated, revocable token:
 
@@ -267,12 +266,20 @@ student-generated, revocable token:
 | Upload | Student-supplied `.docx` | ✅ Working |
 | ICS feed | Private calendar URL (encrypted at rest) | ✅ Working |
 | Google Classroom | OAuth 2.0, read-only scopes | ✅ Working* |
+| Microsoft Teams | OAuth 2.0, read-only + calendar fallback | ✅ Working† |
 | Moodle / Canvas | Student-generated API token | Planned |
 
 \* Requires `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`; the UI marks it
 unavailable until they are set. See
 [`docs/GOOGLE_CLASSROOM_SETUP.md`](docs/GOOGLE_CLASSROOM_SETUP.md) for a
 step-by-step guide.
+
+† Requires `MS_CLIENT_ID` / `MS_CLIENT_SECRET`. Microsoft marks *every*
+education permission as admin-consent-only, so `EduAssignments.ReadBasic`
+needs your university's Microsoft 365 administrator. The adapter falls back
+to `Calendars.Read` — which a student can approve alone — so Teams deadlines
+still arrive without an IT ticket. See
+[`docs/MICROSOFT_TEAMS_SETUP.md`](docs/MICROSOFT_TEAMS_SETUP.md).
 
 ### How sources work
 
@@ -301,6 +308,8 @@ See [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for the full plan.
 - [x] **Phase 4** — SQLite persistence, bcrypt auth, upload, task completion
 - [x] **Phase 5** — Live sources (ICS, Google Classroom OAuth)
 - [x] **Phase 6** — Human-in-the-loop feedback, architecture docs, demo runbook
+- [x] **Phase 7** — Multi-user deployment (Postgres, hosted-model fallback,
+      persistent sessions) and the Microsoft Teams source
 
 ---
 

@@ -164,6 +164,10 @@ def generate_my_plan(token: str, mode: str, feedback: str = "") -> dict:
     )
 
 
+def connect_teams(token: str) -> dict:
+    return _request("GET", "/sources/teams/authorize", token=token)
+
+
 def backend_online() -> bool:
     try:
         _request("GET", "/health")

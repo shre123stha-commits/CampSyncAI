@@ -10,6 +10,7 @@ from frontend.api.backend_api import (
     BackendError,
     connect_classroom,
     connect_ics,
+    connect_teams,
     disconnect_source,
     list_sources,
 )
@@ -19,6 +20,7 @@ ICON = {
     "document": "📄",
     "ics": "📅",
     "classroom": "🎓",
+    "teams": "💼",
 }
 
 
@@ -127,6 +129,52 @@ def show_sources():
                                     st.rerun()
                                 except BackendError as exc:
                                     st.error(str(exc))
+
+            elif kind == "teams":
+                if source["connected"]:
+                    if st.button("Disconnect", key="dc_teams"):
+                        try:
+                            disconnect_source(st.session_state.token, "teams")
+                            _clear_caches()
+                            st.rerun()
+                        except BackendError as exc:
+                            st.error(str(exc))
+
+                elif not source["available"]:
+                    st.caption(
+                        "Needs Microsoft OAuth credentials before it can be "
+                        "switched on. Add MS_CLIENT_ID and MS_CLIENT_SECRET "
+                        "to a `.env` file in the project root and restart the "
+                        "backend."
+                    )
+                    st.caption(
+                        "Step-by-step guide: `docs/MICROSOFT_TEAMS_SETUP.md`"
+                    )
+
+                else:
+                    st.caption(
+                        "Reads your Teams class assignments. If your "
+                        "university has not approved this app, it falls back "
+                        "to your class calendar, which still carries most "
+                        "due dates."
+                    )
+
+                    if st.button("Connect Microsoft Teams", key="go_teams"):
+                        try:
+                            url = connect_teams(st.session_state.token)[
+                                "authorization_url"
+                            ]
+                            st.link_button(
+                                "Continue to Microsoft →",
+                                url,
+                                use_container_width=True,
+                            )
+                            st.caption(
+                                "Sign in on Microsoft's page, then return "
+                                "here and refresh."
+                            )
+                        except BackendError as exc:
+                            st.error(str(exc))
 
             elif kind == "classroom":
                 if source["connected"]:

@@ -7,6 +7,7 @@ integration will use OAuth or a revocable, scoped token instead.
 
 from __future__ import annotations
 
+import hashlib
 import secrets
 from datetime import datetime, timedelta
 
@@ -66,41 +67,121 @@ def verify_password(password: str, password_hash: str) -> bool:
 # Session tokens
 # --------------------------------------------------------------------------
 #
-# An in-process token store. Adequate for a single-instance deployment; swap
-# for Redis or signed JWTs when running more than one worker.
+# Sessions live in the database, not in process memory. An in-memory store
+# signs every student out whenever the API restarts or is redeployed, and
+# breaks outright behind more than one worker, since a token issued by one
+# process is unknown to the next.
+#
+# Only a SHA-256 hash of the token is persisted. The plaintext exists solely
+# in the client's hands, so a database leak yields no usable sessions.
 
-_sessions: dict[str, tuple[int, datetime]] = {}
+TOKEN_BYTES = 32
+
+
+def hash_token(token: str) -> str:
+    """Hash a bearer token for storage. Unsalted SHA-256 is correct here:
+
+    the token is 32 bytes of CSPRNG output, so it has no guessable structure
+    for a rainbow table to exploit, and lookups must be exact-match.
+    """
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def create_session(student_id: int) -> str:
-    token = secrets.token_urlsafe(32)
-    _sessions[token] = (
-        student_id,
-        datetime.utcnow() + timedelta(hours=SESSION_TTL_HOURS),
-    )
+    """Issue a token and persist its hash. Returns the plaintext token."""
+    from db.models import AuthSession
+    from db.session import session_scope
+
+    token = secrets.token_urlsafe(TOKEN_BYTES)
+
+    with session_scope() as session:
+        session.add(
+            AuthSession(
+                student_id=student_id,
+                token_hash=hash_token(token),
+                expires_at=datetime.utcnow()
+                + timedelta(hours=SESSION_TTL_HOURS),
+            )
+        )
+
     return token
 
 
 def resolve_session(token: str) -> int | None:
     """Return the student id for *token*, or None if absent/expired."""
-    entry = _sessions.get(token)
-
-    if entry is None:
+    if not token:
         return None
 
-    student_id, expires_at = entry
+    from sqlmodel import select
 
-    if datetime.utcnow() >= expires_at:
-        _sessions.pop(token, None)
-        return None
+    from db.models import AuthSession
+    from db.session import session_scope
 
-    return student_id
+    with session_scope() as session:
+        record = session.exec(
+            select(AuthSession).where(AuthSession.token_hash == hash_token(token))
+        ).first()
+
+        if record is None:
+            return None
+
+        if datetime.utcnow() >= record.expires_at:
+            session.delete(record)
+            return None
+
+        return record.student_id
 
 
 def destroy_session(token: str) -> None:
-    _sessions.pop(token, None)
+    if not token:
+        return
+
+    from sqlmodel import select
+
+    from db.models import AuthSession
+    from db.session import session_scope
+
+    with session_scope() as session:
+        record = session.exec(
+            select(AuthSession).where(AuthSession.token_hash == hash_token(token))
+        ).first()
+
+        if record is not None:
+            session.delete(record)
+
+
+def purge_expired_sessions() -> int:
+    """Delete sessions past their expiry. Returns how many were removed."""
+    from sqlmodel import select
+
+    from db.models import AuthSession
+    from db.session import session_scope
+
+    with session_scope() as session:
+        stale = session.exec(
+            select(AuthSession).where(AuthSession.expires_at < datetime.utcnow())
+        ).all()
+
+        for record in stale:
+            session.delete(record)
+
+    if stale:
+        logger.info("Purged %d expired session(s)", len(stale))
+
+    return len(stale)
 
 
 def clear_sessions() -> None:
-    """Used by tests."""
-    _sessions.clear()
+    """Used by tests. Tolerates a database whose tables do not exist yet."""
+    from sqlalchemy.exc import SQLAlchemyError
+    from sqlmodel import select
+
+    from db.models import AuthSession
+    from db.session import session_scope
+
+    try:
+        with session_scope() as session:
+            for record in session.exec(select(AuthSession)).all():
+                session.delete(record)
+    except SQLAlchemyError:
+        pass

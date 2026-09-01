@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlmodel import Session
 
 from api.deps import current_student
-from config import classroom_configured, get_logger
+from config import classroom_configured, get_logger, teams_configured
 from db.crypto import encrypt
 from db.models import SourceType, Student
 from db.repository import (
@@ -27,6 +27,12 @@ from db.session import get_session
 from sources.base import SourceError
 from sources.classroom_source import authorization_url, exchange_code
 from sources.ics_source import ICSSource, validate_url
+from sources.teams_source import (
+    authorization_url as teams_authorization_url,
+)
+from sources.teams_source import (
+    exchange_code as teams_exchange_code,
+)
 
 logger = get_logger(__name__)
 
@@ -88,6 +94,13 @@ def list_sources(
                 "Google Classroom",
                 classroom_configured(),
                 "Sign in with Google. Read-only coursework access, revocable.",
+            ),
+            describe(
+                SourceType.TEAMS,
+                "Microsoft Teams",
+                teams_configured(),
+                "Sign in with Microsoft. Class assignments and calendar, "
+                "read-only and revocable.",
             ),
         ]
     }
@@ -200,6 +213,82 @@ def classroom_callback(
     return page(
         "Google Classroom connected",
         "Your coursework will now appear in CampusSync AI.",
+    )
+
+
+# --------------------------------------------------------------------------
+# Microsoft Teams
+# --------------------------------------------------------------------------
+
+
+@router.get("/teams/authorize")
+def teams_authorize(student: Student = Depends(current_student)):
+    """Return the Microsoft consent URL for the student to visit."""
+    if not teams_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Microsoft Teams is not configured on this server.",
+        )
+
+    state = secrets.token_urlsafe(24)
+    _oauth_states[state] = student.id
+
+    return {"authorization_url": teams_authorization_url(state)}
+
+
+@router.get("/teams/callback", response_class=HTMLResponse)
+def teams_callback(
+    code: str = "",
+    state: str = "",
+    error: str = "",
+    error_description: str = "",
+    session: Session = Depends(get_session),
+):
+    """Microsoft redirects the student's browser here after consent."""
+
+    def page(title: str, message: str) -> HTMLResponse:
+        return HTMLResponse(
+            f"""<!doctype html><html><head><meta charset="utf-8">
+            <title>{title}</title></head>
+            <body style="font-family:system-ui;max-width:32rem;margin:4rem auto;
+            text-align:center">
+            <h2>{title}</h2><p>{message}</p>
+            <p>You can close this tab and return to CampusSync AI.</p>
+            </body></html>"""
+        )
+
+    if error:
+        # AADSTS65004 and friends mean the tenant requires admin approval.
+        detail = (error_description or error).split("\r")[0][:200]
+        return page("Authorization cancelled", f"Microsoft reported: {detail}")
+
+    student_id = _oauth_states.pop(state, None)
+
+    if student_id is None:
+        return page(
+            "Invalid or expired request",
+            "Please start the connection again from CampusSync AI.",
+        )
+
+    if not code:
+        return page("Missing authorization code", "Please try again.")
+
+    try:
+        refresh_token = teams_exchange_code(code)
+    except SourceError as exc:
+        return page("Could not connect", str(exc))
+
+    upsert_connection(
+        session,
+        student_id,
+        SourceType.TEAMS,
+        secret=encrypt(refresh_token),
+        label="Microsoft Teams",
+    )
+
+    return page(
+        "Microsoft Teams connected",
+        "Your assignments and class calendar will now appear in CampusSync AI.",
     )
 
 

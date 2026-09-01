@@ -23,6 +23,8 @@ dependencies = [
     "google-auth-oauthlib>=1.2.0",
     "google-api-python-client>=2.145.0",
     "truststore>=0.10.0",
+    "langchain-openai>=0.2.0",
+    "psycopg[binary]>=3.2.0",
 ]
 
 [dependency-groups]

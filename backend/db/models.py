@@ -19,14 +19,15 @@ def utcnow() -> datetime:
 class SourceType(str, Enum):
     """Where a task came from.
 
-    Only DOCUMENT and UPLOAD are implemented. The rest are declared so the
-    schema does not need migrating when the adapters land.
+    Every member has an adapter except UPLOAD, which is folded into
+    DOCUMENT because an uploaded file is read from the same directory.
     """
 
     DOCUMENT = "document"
     UPLOAD = "upload"
     ICS = "ics"
     CLASSROOM = "classroom"
+    TEAMS = "teams"
     MOODLE = "moodle"
 
 
@@ -106,3 +107,22 @@ class SourceConnection(SQLModel, table=True):
     last_synced: datetime | None = None
     last_error: str = ""
     active: bool = Field(default=True)
+
+
+class AuthSession(SQLModel, table=True):
+    """A logged-in session, persisted so a restart does not sign everyone out.
+
+    Only a SHA-256 hash of the bearer token is stored. A database leak
+    therefore does not hand the attacker usable session tokens, the same
+    reasoning that applies to password hashes.
+    """
+
+    __tablename__ = "auth_session"
+
+    id: int | None = Field(default=None, primary_key=True)
+    student_id: int = Field(index=True, foreign_key="student.id")
+
+    token_hash: str = Field(index=True, unique=True)
+
+    created_at: datetime = Field(default_factory=utcnow)
+    expires_at: datetime = Field(index=True)

@@ -20,6 +20,17 @@ _connect_args = (
 engine = create_engine(DATABASE_URL, echo=False, connect_args=_connect_args)
 
 
+def set_engine(new_engine) -> None:
+    """Point every session at *new_engine*.
+
+    Tests swap in an in-memory database. Without this, code that opens its own
+    session (rather than receiving one through FastAPI's dependency system)
+    would keep writing to the real file.
+    """
+    global engine
+    engine = new_engine
+
+
 def init_db() -> None:
     """Create any missing tables. Safe to call on every startup."""
     # Importing registers the models on SQLModel.metadata.
