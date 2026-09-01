@@ -15,9 +15,11 @@ from api.deps import current_student
 from config import MAX_UPLOAD_BYTES, UPLOAD_DIR, get_logger
 from db.models import Student
 from db.repository import list_tasks, set_task_completed, sync_tasks
+from sources.registry import fetch_connected_tasks, merge_tasks
 from db.session import get_session
 from scheduler.plan_validator import expected_priority
 from utils.cache import cache_clear
+from utils.llm_json import LLMOutputError
 
 logger = get_logger(__name__)
 
@@ -58,15 +60,35 @@ def get_tasks(
     Completion state is preserved across re-extraction via a content
     fingerprint, so ticking a task off survives a refresh.
     """
+    source_errors: list[str] = []
+
     try:
         lectures, extracted = load_academic_data(student.registration_no)
 
     except StudentNotFoundError:
-        # No documents yet - return whatever is already persisted.
+        # No documents yet - other sources may still have data.
         lectures, extracted = [], []
 
-    if extracted:
-        sync_tasks(session, student.id, extracted)
+    except LLMOutputError as exc:
+        # Document extraction needs the LLM. If it is unavailable we still
+        # serve everything else rather than failing the whole dashboard.
+        lectures, extracted = [], []
+        source_errors.append(
+            "Documents: could not be read right now "
+            "(the AI service is unavailable)."
+        )
+        logger.warning("Document extraction unavailable: %s", exc)
+
+    # Fan out over every connected source. A failure in one never blocks
+    # the others; its message is surfaced alongside the results.
+    external, connection_errors = fetch_connected_tasks(session, student.id)
+    source_errors.extend(connection_errors)
+
+    # Documents win over calendar feeds describing the same deadline.
+    combined = merge_tasks(extracted, external)
+
+    if combined:
+        sync_tasks(session, student.id, combined)
 
     records = list_tasks(
         session, student.id, include_completed=include_completed
@@ -86,6 +108,7 @@ def get_tasks(
             "completed": sum(1 for t in payload if t["completed"]),
             "pending": sum(1 for t in payload if not t["completed"]),
         },
+        "source_errors": source_errors,
     }
 
 

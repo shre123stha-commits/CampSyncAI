@@ -19,7 +19,7 @@ from agents.academic_agent import (  # noqa: E402
     StudentNotFoundError,
     load_academic_data,
 )
-from api import routes_auth, routes_tasks  # noqa: E402
+from api import routes_auth, routes_sources, routes_tasks  # noqa: E402
 from api.deps import current_student  # noqa: E402
 from db.models import Student  # noqa: E402
 from db.repository import completed_fingerprints, save_plan  # noqa: E402
@@ -96,6 +96,7 @@ async def _llm_error_handler(_request, exc: LLMOutputError):
 
 app.include_router(routes_auth.router)
 app.include_router(routes_tasks.router)
+app.include_router(routes_sources.router)
 
 
 @app.get("/")

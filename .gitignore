@@ -20,3 +20,4 @@ campussync.db
 *.db
 *.sqlite3
 data/uploads/
+.secret_key

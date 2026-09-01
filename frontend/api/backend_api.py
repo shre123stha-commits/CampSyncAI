@@ -127,6 +127,29 @@ def upload_document(token: str, kind: str, filename: str, data: bytes) -> dict:
 
 
 # --------------------------------------------------------------------------
+# Sources
+# --------------------------------------------------------------------------
+
+
+def list_sources(token: str) -> dict:
+    return _request("GET", "/sources", token=token)
+
+
+def connect_ics(token: str, url: str, label: str = "") -> dict:
+    return _request(
+        "POST", "/sources/ics", token=token, json={"url": url, "label": label}
+    )
+
+
+def connect_classroom(token: str) -> dict:
+    return _request("GET", "/sources/classroom/authorize", token=token)
+
+
+def disconnect_source(token: str, source_type: str) -> dict:
+    return _request("DELETE", f"/sources/{source_type}", token=token)
+
+
+# --------------------------------------------------------------------------
 # Planning
 # --------------------------------------------------------------------------
 

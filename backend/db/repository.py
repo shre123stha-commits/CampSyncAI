@@ -9,7 +9,13 @@ from datetime import datetime
 from sqlmodel import Session, select
 
 from config import get_logger
-from db.models import PlanRecord, SourceType, Student, TaskRecord
+from db.models import (
+    PlanRecord,
+    SourceConnection,
+    SourceType,
+    Student,
+    TaskRecord,
+)
 from db.security import hash_password, verify_password
 from models.task import Task
 
@@ -233,3 +239,108 @@ def latest_plan(
         return json.loads(record.payload)
     except json.JSONDecodeError:
         return None
+
+
+# --------------------------------------------------------------------------
+# Source connections
+# --------------------------------------------------------------------------
+
+
+def upsert_connection(
+    session: Session,
+    student_id: int,
+    source_type: SourceType,
+    secret: str,
+    label: str = "",
+) -> SourceConnection:
+    """Create or replace a student's connection to *source_type*.
+
+    *secret* must already be encrypted by the caller.
+    """
+    existing = session.exec(
+        select(SourceConnection).where(
+            SourceConnection.student_id == student_id,
+            SourceConnection.source_type == source_type,
+        )
+    ).first()
+
+    if existing is None:
+        existing = SourceConnection(
+            student_id=student_id, source_type=source_type
+        )
+
+    existing.secret = secret
+    existing.label = label
+    existing.active = True
+    existing.last_error = ""
+    existing.connected_at = datetime.utcnow()
+
+    session.add(existing)
+    session.commit()
+    session.refresh(existing)
+
+    logger.info(
+        "Connected %s for student %d", source_type.value, student_id
+    )
+
+    return existing
+
+
+def list_connections(
+    session: Session, student_id: int, active_only: bool = True
+) -> list[SourceConnection]:
+    statement = select(SourceConnection).where(
+        SourceConnection.student_id == student_id
+    )
+
+    if active_only:
+        statement = statement.where(SourceConnection.active == True)  # noqa: E712
+
+    return list(session.exec(statement).all())
+
+
+def get_connection(
+    session: Session, student_id: int, source_type: SourceType
+) -> SourceConnection | None:
+    return session.exec(
+        select(SourceConnection).where(
+            SourceConnection.student_id == student_id,
+            SourceConnection.source_type == source_type,
+            SourceConnection.active == True,  # noqa: E712
+        )
+    ).first()
+
+
+def disconnect_source(
+    session: Session, student_id: int, source_type: SourceType
+) -> bool:
+    """Remove a connection and destroy its stored secret."""
+    connection = session.exec(
+        select(SourceConnection).where(
+            SourceConnection.student_id == student_id,
+            SourceConnection.source_type == source_type,
+        )
+    ).first()
+
+    if connection is None:
+        return False
+
+    session.delete(connection)
+    session.commit()
+
+    logger.info(
+        "Disconnected %s for student %d", source_type.value, student_id
+    )
+
+    return True
+
+
+def record_sync(
+    session: Session,
+    connection: SourceConnection,
+    error: str = "",
+) -> None:
+    connection.last_synced = datetime.utcnow()
+    connection.last_error = error
+    session.add(connection)
+    session.commit()

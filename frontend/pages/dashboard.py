@@ -145,7 +145,12 @@ def show_dashboard():
         unsafe_allow_html=True,
     )
 
-    col_a, col_b = st.columns([1, 1])
+    col_a, col_src, col_b = st.columns([1, 1, 1])
+
+    with col_src:
+        if st.button("🔗 Connect accounts", use_container_width=True):
+            st.session_state.current_page = "sources"
+            st.rerun()
 
     with col_a:
         if st.button("🔄 Refresh data", use_container_width=True):
@@ -175,6 +180,9 @@ def show_dashboard():
 
     tasks = data.get("tasks") or []
     stats = data.get("stats", {})
+
+    for problem in data.get("source_errors") or []:
+        st.warning(f"⚠️ {problem}")
 
     _upload_expander()
 

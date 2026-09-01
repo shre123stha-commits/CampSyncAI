@@ -3,6 +3,7 @@ import streamlit as st
 from frontend.components.plan_view import plan_page
 from frontend.pages.dashboard import show_dashboard
 from frontend.pages.login import show_login
+from frontend.pages.sources import show_sources
 
 st.set_page_config(
     page_title="CampusSync AI",
@@ -35,6 +36,9 @@ else:
 
     if page == "dashboard":
         show_dashboard()
+
+    elif page == "sources":
+        show_sources()
 
     elif page == "today":
         plan_page(

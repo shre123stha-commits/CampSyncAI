@@ -16,6 +16,12 @@ dependencies = [
     "sqlmodel>=0.0.22",
     "bcrypt>=4.2.0",
     "python-multipart>=0.0.9",
+    "icalendar>=6.0.0",
+    "cryptography>=43.0.0",
+    "requests>=2.32.0",
+    "google-auth>=2.35.0",
+    "google-auth-oauthlib>=1.2.0",
+    "google-api-python-client>=2.145.0",
 ]
 
 [dependency-groups]

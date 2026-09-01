@@ -120,3 +120,51 @@ SESSION_TTL_HOURS = int(os.getenv("SESSION_TTL_HOURS", "12"))
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", BASE_DIR / "data" / "uploads"))
 
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(5 * 1024 * 1024)))
+
+
+# --------------------------------------------------------------------------
+# Secrets & integrations
+# --------------------------------------------------------------------------
+
+
+def _dev_secret_key() -> str:
+    """A stable development key, generated once and cached on disk.
+
+    Production MUST set SECRET_KEY explicitly; rotating it invalidates every
+    stored source credential.
+    """
+    key_file = BASE_DIR / ".secret_key"
+
+    if key_file.exists():
+        return key_file.read_text().strip()
+
+    import secrets as _secrets
+
+    value = _secrets.token_urlsafe(48)
+
+    try:
+        key_file.write_text(value)
+        key_file.chmod(0o600)
+    except OSError:
+        pass
+
+    return value
+
+
+SECRET_KEY = os.getenv("SECRET_KEY") or _dev_secret_key()
+
+# Google Classroom OAuth. Leave unset to keep the integration disabled.
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI = os.getenv(
+    "GOOGLE_REDIRECT_URI", "http://localhost:8000/sources/classroom/callback"
+)
+
+CLASSROOM_SCOPES = [
+    "https://www.googleapis.com/auth/classroom.courses.readonly",
+    "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
+]
+
+
+def classroom_configured() -> bool:
+    return bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)

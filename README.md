@@ -176,6 +176,10 @@ CampSyncAI/
 | `POST /upload?kind=timetable\|lms` | Upload a `.docx` |
 | `POST /refresh` | Invalidate the extraction cache |
 | `POST /my/generate-plan` | Generate a plan, skipping completed tasks |
+| `GET /sources` | Every source and its connection state |
+| `POST /sources/ics` | Connect a calendar feed |
+| `GET /sources/classroom/authorize` | Start Google OAuth |
+| `DELETE /sources/{type}` | Disconnect and destroy the credential |
 
 **Public:**
 
@@ -214,7 +218,7 @@ No stack trace is ever reachable from the UI.
 make test
 ```
 
-191 tests, ~20s, **no Ollama required** — the LLM is stubbed. Covers JSON
+277 tests, ~25s, **no Ollama required** — the LLM is stubbed. Covers JSON
 recovery from malformed model output, day-aware slot detection, deadline
 parsing across 8 formats, plan validation rules, the retry loop, and every
 API error path, plus the caching layer.
@@ -233,9 +237,26 @@ student-generated, revocable token:
 |---|---|---|
 | Documents | Local `.docx` | ✅ Working |
 | Upload | Student-supplied `.docx` | ✅ Working |
-| ICS feed | Private calendar URL | Planned |
-| Google Classroom | OAuth 2.0 + MCP | Planned |
-| Moodle / Canvas | Student API token | Planned |
+| ICS feed | Private calendar URL (encrypted at rest) | ✅ Working |
+| Google Classroom | OAuth 2.0, read-only scopes | ✅ Working* |
+| Moodle / Canvas | Student-generated API token | Planned |
+
+\* Requires `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`; the UI marks it
+unavailable until they are set.
+
+### How sources work
+
+All adapters implement one `Source` protocol and normalise into the shared
+`Task` model, so the planner never learns where data came from. The registry
+fans out over every connected source and merges the results, de-duplicating
+on (subject, work, deadline) with documents taking precedence.
+
+**A failing source never breaks the request.** If a calendar feed 404s or the
+AI service is down, the working sources still return their tasks and the
+failure is reported in `source_errors` for the UI to show as a warning.
+
+Credentials are encrypted at rest with Fernet, keyed on `SECRET_KEY`, and
+destroyed on disconnect.
 
 ---
 
@@ -248,7 +269,7 @@ See [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for the full plan.
 - [x] **Phase 2** — Day-aware scheduling + semantic validators
 - [x] **Phase 3** — Extraction caching, sub-second warm dashboard
 - [x] **Phase 4** — SQLite persistence, bcrypt auth, upload, task completion
-- [ ] **Phase 5** — Live sources (ICS, Google Classroom OAuth)
+- [x] **Phase 5** — Live sources (ICS, Google Classroom OAuth)
 - [ ] **Phase 6** — Human-in-the-loop feedback, polish
 
 ---

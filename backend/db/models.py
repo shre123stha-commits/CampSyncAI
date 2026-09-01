@@ -82,3 +82,27 @@ class PlanRecord(SQLModel, table=True):
     mode: str
     generated_at: datetime = Field(default_factory=utcnow)
     payload: str  # JSON-encoded StudyPlanResponse
+
+
+class SourceConnection(SQLModel, table=True):
+    """A student's link to an external data source.
+
+    `secret` holds an encrypted payload (an OAuth refresh token, or a private
+    feed URL). It is encrypted, never hashed, because we must replay it.
+    A university password is never stored here or anywhere else.
+    """
+
+    __tablename__ = "source_connection"
+
+    id: int | None = Field(default=None, primary_key=True)
+    student_id: int = Field(index=True, foreign_key="student.id")
+
+    source_type: SourceType = Field(index=True)
+    label: str = ""
+
+    secret: str = ""
+
+    connected_at: datetime = Field(default_factory=utcnow)
+    last_synced: datetime | None = None
+    last_error: str = ""
+    active: bool = Field(default=True)
