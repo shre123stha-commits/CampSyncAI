@@ -1,0 +1,103 @@
+"""Loads the student's timetable and LMS tasks from their documents."""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from config import LMS_DIR, TIMETABLE_DIR, get_logger
+from extractors.task_extractor import extract_tasks
+from extractors.timetable_extractor import extract_timetable
+from models.task import Task
+from utils.doc_loader import read_docx
+
+logger = get_logger(__name__)
+
+DEADLINE_FORMATS = (
+    "%d %B %Y",
+    "%d %b %Y",
+    "%Y-%m-%d",
+    "%d/%m/%Y",
+    "%d-%m-%Y",
+    "%B %d, %Y",
+    "%b %d, %Y",
+)
+
+# Sentinel used when a deadline cannot be parsed, so the task sorts last
+# instead of appearing urgent.
+UNKNOWN_DEADLINE_DAYS = 999
+
+
+class StudentNotFoundError(FileNotFoundError):
+    """No documents exist for the given registration number."""
+
+
+def compute_days_remaining(deadline: str, today: datetime | None = None) -> int:
+    """Days between *today* and *deadline*, computed deterministically.
+
+    The LLM is never trusted with this arithmetic.
+    """
+    if not deadline:
+        return UNKNOWN_DEADLINE_DAYS
+
+    reference = (today or datetime.today()).date()
+    cleaned = deadline.strip()
+
+    for fmt in DEADLINE_FORMATS:
+        try:
+            parsed = datetime.strptime(cleaned, fmt).date()
+        except ValueError:
+            continue
+        return (parsed - reference).days
+
+    logger.debug("Could not parse deadline %r", deadline)
+    return UNKNOWN_DEADLINE_DAYS
+
+
+def apply_days_remaining(tasks: list[Task]) -> list[Task]:
+    for task in tasks:
+        task.days_remaining = compute_days_remaining(task.deadline)
+    return tasks
+
+
+def academic_agent(state):
+    """Read the student's documents and populate timetable + assignments."""
+    reg_no = state["registration_no"]
+
+    logger.info("Academic agent: loading documents for %s", reg_no)
+
+    timetable_path = TIMETABLE_DIR / f"{reg_no}.docx"
+    lms_path = LMS_DIR / f"{reg_no}.docx"
+
+    if not timetable_path.exists() and not lms_path.exists():
+        raise StudentNotFoundError(
+            f"No academic documents found for registration number '{reg_no}'."
+        )
+
+    # ---------------- Timetable ----------------
+
+    lectures = []
+
+    if timetable_path.exists():
+        lectures = extract_timetable(read_docx(timetable_path))
+    else:
+        logger.warning("No timetable document for %s", reg_no)
+
+    # ---------------- LMS tasks ----------------
+
+    tasks: list[Task] = []
+
+    if lms_path.exists():
+        tasks = extract_tasks(read_docx(lms_path), platform="LMS")
+    else:
+        logger.warning("No LMS document for %s", reg_no)
+
+    apply_days_remaining(tasks)
+
+    state["timetable"] = lectures
+    state["assignments"] = tasks
+
+    logger.info(
+        "Academic agent: %d lecture(s), %d task(s)", len(lectures), len(tasks)
+    )
+
+    return state
