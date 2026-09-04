@@ -1,0 +1,100 @@
+# One-click deployment to Render's free tier.
+#
+#   1. Push this repo to GitHub
+#   2. render.com -> New -> Blueprint -> pick the repo
+#   3. Paste GROQ_API_KEY when prompted
+#
+# Free-tier realities, so nothing here is a surprise:
+#
+#   * Services sleep after 15 minutes idle. The first request afterwards
+#     takes ~30-60s to wake. Subsequent ones are normal.
+#   * The free Postgres instance expires after 30 days and must be
+#     recreated. Export anything you care about before then.
+#   * 750 instance-hours/month are shared across all your free services,
+#     which two sleeping services will not exhaust.
+#
+# For ten friends using this a few times a day, that is workable. If the
+# sleeping becomes annoying, the paid tier is a few dollars a month, or see
+# docs/DEPLOYMENT.md for a VPS.
+
+databases:
+  - name: campussync-db
+    plan: free
+    databaseName: campussync
+    user: campussync
+
+services:
+  - type: web
+    name: campussync-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: campussync-db
+          property: connectionString
+
+      # Generated once by Render and kept stable across deploys, which is
+      # essential: this key encrypts stored source credentials, so rotating
+      # it would orphan every connected calendar.
+      - key: SECRET_KEY
+        generateValue: true
+
+      # Groq's free tier is fast and needs no card. Swap the base URL for
+      # another OpenAI-compatible provider if you prefer.
+      - key: LLM_PROVIDER
+        value: openai
+      - key: OPENAI_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: PLANNING_MODEL
+        value: llama-3.3-70b-versatile
+      - key: OPENAI_API_KEY
+        sync: false        # prompted on first deploy, never committed
+
+      - key: SESSION_TTL_HOURS
+        value: "168"       # a week, so friends are not re-signing in daily
+      - key: LOG_LEVEL
+        value: INFO
+
+      # --- Optional: Google Classroom and Microsoft Teams ---------------
+      # Leave these blank and both sources simply show as "Unavailable";
+      # the ICS calendar feed and document upload still work. Fill them in
+      # later by following docs/GOOGLE_CLASSROOM_SETUP.md and
+      # docs/MICROSOFT_TEAMS_SETUP.md.
+      #
+      # The redirect URIs MUST be your real Render API address, and must
+      # match what you registered with the provider character for
+      # character, or sign-in fails with redirect_uri_mismatch. Replace
+      # the xxxx below with your actual service URL after the first
+      # deploy, then redeploy.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false        # https://campussync-api-xxxx.onrender.com/sources/classroom/callback
+
+      - key: MS_CLIENT_ID
+        sync: false
+      - key: MS_CLIENT_SECRET
+        sync: false
+      - key: MS_REDIRECT_URI
+        sync: false        # https://campussync-api-xxxx.onrender.com/sources/teams/callback
+      - key: MS_TENANT
+        value: common      # "common" works for personal and school accounts
+
+  - type: web
+    name: campussync-web
+    runtime: docker
+    plan: free
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: .
+    envVars:
+      - key: BACKEND_URL
+        fromService:
+          name: campussync-api
+          type: web
+          property: hostport

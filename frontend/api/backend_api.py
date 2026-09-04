@@ -1,0 +1,210 @@
+"""HTTP client for the CampusSync AI backend."""
+
+from __future__ import annotations
+
+import os
+
+import requests
+
+def _normalise_base_url(raw: str) -> str:
+    """Accept a bare host:port as well as a full URL.
+
+    Render's `hostport` property yields "campussync-api:10000" with no
+    scheme, which requests rejects. Local values and explicit https:// URLs
+    pass through untouched.
+    """
+    cleaned = (raw or "").strip().rstrip("/")
+
+    if not cleaned:
+        return "http://127.0.0.1:8000"
+
+    if "://" in cleaned:
+        return cleaned
+
+    # Internal service names and localhost are plain HTTP; anything with a
+    # dot is a public hostname and should be HTTPS.
+    scheme = "https" if "." in cleaned.split(":")[0] else "http"
+
+    return f"{scheme}://{cleaned}"
+
+
+BASE_URL = _normalise_base_url(os.getenv("BACKEND_URL", ""))
+
+TIMEOUT = int(os.getenv("BACKEND_TIMEOUT", "180"))
+
+
+class BackendError(Exception):
+    """A user-presentable backend failure."""
+
+
+class AuthError(BackendError):
+    """The session is missing or has expired."""
+
+
+def _request(method: str, path: str, token: str | None = None, **kwargs):
+    url = f"{BASE_URL}{path}"
+
+    headers = kwargs.pop("headers", {})
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    try:
+        response = requests.request(
+            method, url, timeout=TIMEOUT, headers=headers, **kwargs
+        )
+
+    except requests.exceptions.ConnectionError as exc:
+        raise BackendError(
+            f"Cannot reach the CampusSync AI backend. Is it running at "
+            f"{BASE_URL}?"
+        ) from exc
+
+    except requests.exceptions.Timeout as exc:
+        raise BackendError(
+            "The backend took too long to respond. The AI model may still be "
+            "loading — please try again."
+        ) from exc
+
+    if response.status_code >= 400:
+        try:
+            detail = response.json().get("detail")
+        except ValueError:
+            detail = None
+
+        if isinstance(detail, list) and detail:
+            detail = detail[0].get("msg", str(detail))
+
+        message = detail or f"Backend error {response.status_code}."
+
+        if response.status_code == 401:
+            raise AuthError(message)
+
+        raise BackendError(message)
+
+    return response.json()
+
+
+# --------------------------------------------------------------------------
+# Auth
+# --------------------------------------------------------------------------
+
+
+def register(registration_no: str, password: str, name: str = "") -> dict:
+    return _request(
+        "POST",
+        "/auth/register",
+        json={
+            "registration_no": registration_no,
+            "password": password,
+            "name": name,
+        },
+    )
+
+
+def login(registration_no: str, password: str) -> dict:
+    return _request(
+        "POST",
+        "/auth/login",
+        json={"registration_no": registration_no, "password": password},
+    )
+
+
+def logout(token: str) -> None:
+    try:
+        _request("POST", "/auth/logout", token=token)
+    except BackendError:
+        pass
+
+
+# --------------------------------------------------------------------------
+# Tasks
+# --------------------------------------------------------------------------
+
+
+def get_tasks(token: str, include_completed: bool = True) -> dict:
+    return _request(
+        "GET",
+        f"/tasks?include_completed={str(include_completed).lower()}",
+        token=token,
+    )
+
+
+def set_task_completed(token: str, task_id: int, completed: bool) -> dict:
+    return _request(
+        "PATCH", f"/tasks/{task_id}", token=token, json={"completed": completed}
+    )
+
+
+def refresh_data(token: str) -> dict:
+    return _request("POST", "/refresh", token=token)
+
+
+def upload_document(token: str, kind: str, filename: str, data: bytes) -> dict:
+    return _request(
+        "POST",
+        f"/upload?kind={kind}",
+        token=token,
+        files={"file": (filename, data, "application/octet-stream")},
+    )
+
+
+# --------------------------------------------------------------------------
+# Sources
+# --------------------------------------------------------------------------
+
+
+def list_sources(token: str) -> dict:
+    return _request("GET", "/sources", token=token)
+
+
+def connect_ics(token: str, url: str, label: str = "") -> dict:
+    return _request(
+        "POST", "/sources/ics", token=token, json={"url": url, "label": label}
+    )
+
+
+def connect_classroom(token: str) -> dict:
+    return _request("GET", "/sources/classroom/authorize", token=token)
+
+
+def disconnect_source(token: str, source_type: str) -> dict:
+    return _request("DELETE", f"/sources/{source_type}", token=token)
+
+
+# --------------------------------------------------------------------------
+# Planning
+# --------------------------------------------------------------------------
+
+
+def generate_my_plan(token: str, mode: str, feedback: str = "") -> dict:
+    """Generate a plan. `feedback` re-plans in response to a student's note."""
+    return _request(
+        "POST",
+        "/my/generate-plan",
+        token=token,
+        json={"mode": mode, "feedback": feedback},
+    )
+
+
+def reset_password(registration_no: str, recovery_code: str, new_password: str) -> dict:
+    return _request(
+        "POST",
+        "/auth/reset-password",
+        json={
+            "registration_no": registration_no,
+            "recovery_code": recovery_code,
+            "new_password": new_password,
+        },
+    )
+
+
+def connect_teams(token: str) -> dict:
+    return _request("GET", "/sources/teams/authorize", token=token)
+
+
+def backend_online() -> bool:
+    try:
+        _request("GET", "/health")
+        return True
+    except BackendError:
+        return False
